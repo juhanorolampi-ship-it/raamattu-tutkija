@@ -32,9 +32,43 @@ if 'password_correct' not in st.session_state:
 if 'opetus_teksti' not in st.session_state:
     st.session_state.opetus_teksti = ""
 
-# --- TAUSTA-FUNKTIOT (pysyvät samoina) ---
+# --- PÄIVITETTY TIEDOSTON LUKUFUNKTIO ---
+def lue_ladattu_tiedosto(uploaded_file):
+    if uploaded_file is None:
+        return ""
+    try:
+        file_extension = uploaded_file.name.split('.')[-1].lower()
+        file_bytes = io.BytesIO(uploaded_file.getvalue())
+        
+        if file_extension == 'pdf':
+            pdf_reader = PyPDF2.PdfReader(file_bytes)
+            text = ""
+            for page in pdf_reader.pages:
+                text += page.extract_text() + "\n"
+            return text
+        elif file_extension == 'docx':
+            doc = docx.Document(file_bytes)
+            text = "\n".join([para.text for para in doc.paragraphs])
+            return text
+        elif file_extension == 'txt':
+            # Yritetään ensin UTF-8, sitten latin-1
+            try:
+                return file_bytes.read().decode("utf-8")
+            except UnicodeDecodeError:
+                st.info(f"Tiedostoa '{uploaded_file.name}' ei voitu lukea UTF-8-koodauksella, yritetään toisella merkistöllä.")
+                file_bytes.seek(0) # Palataan tiedoston alkuun
+                return file_bytes.read().decode("latin-1")
+        else:
+            st.warning(f"Tiedostomuotoa '.{file_extension}' ei tueta. Tuetut muodot: .txt, .pdf, .docx")
+            return ""
+    except Exception as e:
+        st.error(f"Virhe tiedoston '{uploaded_file.name}' lukemisessa: {e}")
+        return ""
+
+# (Kaikki muut tausta-funktiot pysyvät samoina)
 @st.cache_data
 def lataa_raamattu(tiedostonimi="bible.json"):
+    # ... (ei muutoksia)
     try:
         with open(tiedostonimi, "r", encoding="utf-8") as f:
             bible_data = json.load(f)
@@ -53,32 +87,8 @@ def lataa_raamattu(tiedostonimi="bible.json"):
                 if key: book_map[key] = target
     return bible_data, book_map, book_name_map
 
-def lue_ladattu_tiedosto(uploaded_file):
-    # Tämä funktio käsittelee edelleen YHDEN tiedoston kerrallaan
-    if uploaded_file is None:
-        return ""
-    try:
-        file_extension = uploaded_file.name.split('.')[-1].lower()
-        if file_extension == 'pdf':
-            pdf_reader = PyPDF2.PdfReader(io.BytesIO(uploaded_file.getvalue()))
-            text = ""
-            for page in pdf_reader.pages:
-                text += page.extract_text() + "\n"
-            return text
-        elif file_extension == 'docx':
-            doc = docx.Document(io.BytesIO(uploaded_file.getvalue()))
-            text = "\n".join([para.text for para in doc.paragraphs])
-            return text
-        elif file_extension == 'txt':
-            return uploaded_file.getvalue().decode("utf-8")
-        else:
-            st.warning(f"Tiedostomuotoa '.{file_extension}' ei tueta. Tuetut muodot: .txt, .pdf, .docx")
-            return ""
-    except Exception as e:
-        st.error(f"Virhe tiedoston '{uploaded_file.name}' lukemisessa: {e}")
-        return ""
-
 def etsi_sana_paikallisesti(bible_data, book_map, book_name_map, sana, kirja):
+    # ... (ei muutoksia)
     tulokset, sana_lower = [], sana.lower().replace('*', '.*')
     try: pattern = re.compile(sana_lower)
     except re.error: return []
@@ -94,6 +104,7 @@ def etsi_sana_paikallisesti(bible_data, book_map, book_name_map, sana, kirja):
     return tulokset
 
 def tee_api_kutsu(prompt, malli, noudata_perusohjetta=True):
+    # ... (ei muutoksia)
     final_prompt = f"{TEOLOGINEN_PERUSOHJE}\n\n---\n\nKÄYTTÄJÄN PYYNTÖ:\n{prompt}" if noudata_perusohjetta else prompt
     try:
         model = genai.GenerativeModel(malli)
@@ -105,24 +116,27 @@ def tee_api_kutsu(prompt, malli, noudata_perusohjetta=True):
         return None
 
 def luo_sisallysluettelo(aihe, sanamaara, malli, noudata_perusohjetta):
+    # ... (ei muutoksia)
     prompt = f"Olet teologi. Luo yksityiskohtainen sisällysluettelo noin {sanamaara} sanan opetukselle aiheesta '{aihe}'. Rakenna runko, jossa on johdanto, 3-5 pääkohtaa ja jokaiseen 2-4 alakohtaa, sekä yhteenveto. Vastaa AINOASTAAN numeroituna listana."
     return tee_api_kutsu(prompt, malli, noudata_perusohjetta)
 
 def kirjoita_osio(aihe, osion_otsikko, jakeet, lisamateriaali, sanamaara_osio, malli, noudata_perusohjetta):
+    # ... (ei muutoksia)
     jae_teksti = "\n".join(jakeet) if jakeet else "Ei Raamattu-jakeita tähän osioon."
     lisamateriaali_osio = f"\n\n--- KÄYTTÄJÄN ANTAMA LISÄMATERIAALI ---\n{lisamateriaali}" if lisamateriaali else ""
     prompt = f"Olet teologi. Kirjoita yksi kappale laajasta opetuksesta pääaiheella '{aihe}'. Kappaleen otsikko on: '{osion_otsikko}'. Kirjoita noin {sanamaara_osio} sanan osuus. ÄLÄ TOISTA OTSIKKOA. Aloita suoraan leipätekstillä. Käytä AINOASTAAN alla annettua KR33/38-lähdemateriaalia ja käyttäjän antamaa lisämateriaalia. Lainaa keskeiset jakeet sanatarkasti. LÄHDEMATERIAALI:\n{jae_teksti}{lisamateriaali_osio}"
     return tee_api_kutsu(prompt, malli, noudata_perusohjetta)
 
 def paranna_tekstin_osaa(koko_teksti, muokattava_osa, ohje, malli, noudata_perusohjetta):
+    # ... (ei muutoksia)
     if not muokattava_osa.strip():
         st.warning("Liitä ensin muokattava tekstinosa alempaan kenttään.")
         return None
     prompt = f"Olet kustannustoimittaja. Muokkaa alla olevasta KOKO TEKSTISTÄ yhtä osiota. KOKO TEKSTI (KONTEKSTIA VARTEN): --- {koko_teksti} --- MUOKATTAVA OSIO: --- {muokattava_osa} --- Käyttäjän ohje on: \"{ohje}\". PALAUTA AINOASTAAN UUSI, PARANNELTU VERSIO MUOKATTAVASTA OSIOSTA."
     return tee_api_kutsu(prompt, malli, noudata_perusohjetta)
 
-# (Sisäänkirjautumislogiikka pysyy samana)
 def check_password():
+    # ... (ei muutoksia)
     st.header("🔑 Kirjaudu sisään")
     password = st.text_input("Syötä salasana", type="password")
     try:
@@ -146,7 +160,7 @@ st.set_page_config(page_title="Älykäs Raamattu-tutkija", layout="wide")
 if not st.session_state.password_correct:
     check_password()
 else:
-    st.title("📖 Älykäs Raamattu-tutkija v4.1")
+    st.title("📖 Älykäs Raamattu-tutkija v4.2")
     bible_data, book_map, book_name_map = lataa_raamattu()
 
     try:
@@ -160,11 +174,10 @@ else:
         st.header("1. Luo uusi opetus")
         aihe = st.text_area("Mistä aiheesta haluat luoda opetuksen?", "Jumalan kutsu", height=100)
         
-        # --- MUUTOS: Sallitaan usean tiedoston lataus ---
         ladatut_tiedostot = st.file_uploader(
             "Lataa lisämateriaalia (valinnainen)", 
             type=['txt', 'pdf', 'docx'],
-            accept_multiple_files=True  # Tämä on avainmuutos
+            accept_multiple_files=True
         )
 
         sanamaara = st.number_input("Mikä on tavoitesanamäärä?", min_value=300, max_value=20000, value=1000, step=100)
@@ -175,14 +188,12 @@ else:
     if suorita_nappi:
         with st.status("Luodaan opetusta...", expanded=True) as status:
             status.write("[1/5] Luetaan lisämateriaalia...")
-            
-            # --- MUUTOS: Käydään läpi kaikki ladatut tiedostot ---
             lisamateriaalit = []
             if ladatut_tiedostot:
                 for tiedosto in ladatut_tiedostot:
                     lisamateriaalit.append(lue_ladattu_tiedosto(tiedosto))
             
-            lisamateriaali_teksti = "\n\n---\n\n".join(lisamateriaalit) # Yhdistetään kaikki tekstit
+            lisamateriaali_teksti = "\n\n---\n\n".join(lisamateriaalit)
             
             if lisamateriaali_teksti:
                 status.write(f"-> Lisämateriaalista luettu {len(lisamateriaali_teksti.split())} sanaa.")
@@ -228,7 +239,6 @@ else:
     # (Muokkausosio pysyy täysin samana)
     if st.session_state.opetus_teksti:
         st.header("2. Koko opetus")
-        # ...
         sanojen_maara = len(st.session_state.opetus_teksti.split())
         col1, col2 = st.columns([3, 1])
         with col1:
