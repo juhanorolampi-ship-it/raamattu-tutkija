@@ -8,7 +8,7 @@ import docx
 import io
 
 # ==============================================================================
-# API-avaimen käsittely (ei muutoksia)
+# API-avaimen käsittely
 # ==============================================================================
 # (Teologinen perusohje ja CSS-muotoilut pysyvät samoina)
 TEOLOGINEN_PERUSOHJE = """
@@ -32,8 +32,29 @@ if 'password_correct' not in st.session_state:
 if 'opetus_teksti' not in st.session_state:
     st.session_state.opetus_teksti = ""
 
-# --- UUSI LISÄYS: Tiedoston lukufunktio ---
+# --- TAUSTA-FUNKTIOT (pysyvät samoina) ---
+@st.cache_data
+def lataa_raamattu(tiedostonimi="bible.json"):
+    try:
+        with open(tiedostonimi, "r", encoding="utf-8") as f:
+            bible_data = json.load(f)
+    except FileNotFoundError:
+        st.error(f"KRIITTINEN VIRHE: Tiedostoa '{tiedostonimi}' ei löytynyt.")
+        st.stop()
+    book_map, book_name_map = {}, {}
+    for book_id, book_content in bible_data.get('book', {}).items():
+        info, target = book_content.get('info', {}), (book_id, book_content)
+        proper_name = info.get('name', f"Kirja {book_id}")
+        book_name_map[book_id] = proper_name
+        names = [info.get('name', ''), info.get('shortname', '')] + info.get('abbr', [])
+        for name in names:
+            if name:
+                key = name.lower().replace('.', '').replace(' ', '')
+                if key: book_map[key] = target
+    return bible_data, book_map, book_name_map
+
 def lue_ladattu_tiedosto(uploaded_file):
+    # Tämä funktio käsittelee edelleen YHDEN tiedoston kerrallaan
     if uploaded_file is None:
         return ""
     try:
@@ -57,30 +78,7 @@ def lue_ladattu_tiedosto(uploaded_file):
         st.error(f"Virhe tiedoston '{uploaded_file.name}' lukemisessa: {e}")
         return ""
 
-# (Kaikki muut tausta-funktiot pysyvät samoina, paitsi kirjoita_osio)
-@st.cache_data
-def lataa_raamattu(tiedostonimi="bible.json"):
-    # ... (ei muutoksia tähän)
-    try:
-        with open(tiedostonimi, "r", encoding="utf-8") as f:
-            bible_data = json.load(f)
-    except FileNotFoundError:
-        st.error(f"KRIITTINEN VIRHE: Tiedostoa '{tiedostonimi}' ei löytynyt.")
-        st.stop()
-    book_map, book_name_map = {}, {}
-    for book_id, book_content in bible_data.get('book', {}).items():
-        info, target = book_content.get('info', {}), (book_id, book_content)
-        proper_name = info.get('name', f"Kirja {book_id}")
-        book_name_map[book_id] = proper_name
-        names = [info.get('name', ''), info.get('shortname', '')] + info.get('abbr', [])
-        for name in names:
-            if name:
-                key = name.lower().replace('.', '').replace(' ', '')
-                if key: book_map[key] = target
-    return bible_data, book_map, book_name_map
-
 def etsi_sana_paikallisesti(bible_data, book_map, book_name_map, sana, kirja):
-    # ... (ei muutoksia tähän)
     tulokset, sana_lower = [], sana.lower().replace('*', '.*')
     try: pattern = re.compile(sana_lower)
     except re.error: return []
@@ -96,7 +94,6 @@ def etsi_sana_paikallisesti(bible_data, book_map, book_name_map, sana, kirja):
     return tulokset
 
 def tee_api_kutsu(prompt, malli, noudata_perusohjetta=True):
-    # ... (ei muutoksia tähän)
     final_prompt = f"{TEOLOGINEN_PERUSOHJE}\n\n---\n\nKÄYTTÄJÄN PYYNTÖ:\n{prompt}" if noudata_perusohjetta else prompt
     try:
         model = genai.GenerativeModel(malli)
@@ -108,30 +105,16 @@ def tee_api_kutsu(prompt, malli, noudata_perusohjetta=True):
         return None
 
 def luo_sisallysluettelo(aihe, sanamaara, malli, noudata_perusohjetta):
-    # ... (ei muutoksia tähän)
     prompt = f"Olet teologi. Luo yksityiskohtainen sisällysluettelo noin {sanamaara} sanan opetukselle aiheesta '{aihe}'. Rakenna runko, jossa on johdanto, 3-5 pääkohtaa ja jokaiseen 2-4 alakohtaa, sekä yhteenveto. Vastaa AINOASTAAN numeroituna listana."
     return tee_api_kutsu(prompt, malli, noudata_perusohjetta)
 
-# --- MUOKATTU KIRJOITA_OSIO-FUNKTIO ---
 def kirjoita_osio(aihe, osion_otsikko, jakeet, lisamateriaali, sanamaara_osio, malli, noudata_perusohjetta):
     jae_teksti = "\n".join(jakeet) if jakeet else "Ei Raamattu-jakeita tähän osioon."
     lisamateriaali_osio = f"\n\n--- KÄYTTÄJÄN ANTAMA LISÄMATERIAALI ---\n{lisamateriaali}" if lisamateriaali else ""
-    
-    prompt = f"""
-    Olet teologi. Kirjoita yksi kappale laajasta opetuksesta pääaiheella '{aihe}'.
-    Käsiteltävän kappaleen otsikko on: '{osion_otsikko}'.
-    Kirjoita tästä aiheesta syvällinen, noin {sanamaara_osio} sanan osuus.
-    ÄLÄ TOISTA YLLÄ OLEVAA OTSIKKOA VASTAUKSESSASI. Aloita suoraan leipätekstillä.
-    Käytä AINOASTAAN alla annettua KR33/38-lähdemateriaalia ja käyttäjän antamaa lisämateriaalia. Lainaa keskeiset jakeet sanatarkasti.
-    
-    --- RAAMATUN LÄHDEMATERIAALI ---
-    {jae_teksti}
-    {lisamateriaali_osio}
-    """
+    prompt = f"Olet teologi. Kirjoita yksi kappale laajasta opetuksesta pääaiheella '{aihe}'. Kappaleen otsikko on: '{osion_otsikko}'. Kirjoita noin {sanamaara_osio} sanan osuus. ÄLÄ TOISTA OTSIKKOA. Aloita suoraan leipätekstillä. Käytä AINOASTAAN alla annettua KR33/38-lähdemateriaalia ja käyttäjän antamaa lisämateriaalia. Lainaa keskeiset jakeet sanatarkasti. LÄHDEMATERIAALI:\n{jae_teksti}{lisamateriaali_osio}"
     return tee_api_kutsu(prompt, malli, noudata_perusohjetta)
 
 def paranna_tekstin_osaa(koko_teksti, muokattava_osa, ohje, malli, noudata_perusohjetta):
-    # ... (ei muutoksia tähän)
     if not muokattava_osa.strip():
         st.warning("Liitä ensin muokattava tekstinosa alempaan kenttään.")
         return None
@@ -140,7 +123,6 @@ def paranna_tekstin_osaa(koko_teksti, muokattava_osa, ohje, malli, noudata_perus
 
 # (Sisäänkirjautumislogiikka pysyy samana)
 def check_password():
-    # ... (ei muutoksia tähän)
     st.header("🔑 Kirjaudu sisään")
     password = st.text_input("Syötä salasana", type="password")
     try:
@@ -158,19 +140,19 @@ def check_password():
     else: 
         st.session_state.password_correct = True
 
-# --- PÄÄOHJELMA, JOSSA UUSI KÄYTTÖLIITTYMÄ ---
+# --- PÄÄOHJELMA ---
 st.set_page_config(page_title="Älykäs Raamattu-tutkija", layout="wide")
 
 if not st.session_state.password_correct:
     check_password()
 else:
-    st.title("📖 Älykäs Raamattu-tutkija v4.0")
+    st.title("📖 Älykäs Raamattu-tutkija v4.1")
     bible_data, book_map, book_name_map = lataa_raamattu()
 
     try:
         genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     except (KeyError, FileNotFoundError):
-        st.error("API-avainta ei löydy Streamlitin salaisuuksista.")
+        st.error("API-avainta ei löydy. Varmista, että olet asettanut GEMINI_API_KEY -salaisuuden Streamlitin asetuksissa.")
         st.stop()
 
     with st.sidebar:
@@ -178,8 +160,12 @@ else:
         st.header("1. Luo uusi opetus")
         aihe = st.text_area("Mistä aiheesta haluat luoda opetuksen?", "Jumalan kutsu", height=100)
         
-        # UUSI LISÄYS: Tiedoston latauskenttä
-        ladattu_tiedosto = st.file_uploader("Lataa lisämateriaali (valinnainen)", type=['txt', 'pdf', 'docx'])
+        # --- MUUTOS: Sallitaan usean tiedoston lataus ---
+        ladatut_tiedostot = st.file_uploader(
+            "Lataa lisämateriaalia (valinnainen)", 
+            type=['txt', 'pdf', 'docx'],
+            accept_multiple_files=True  # Tämä on avainmuutos
+        )
 
         sanamaara = st.number_input("Mikä on tavoitesanamäärä?", min_value=300, max_value=20000, value=1000, step=100)
         malli_valinta_ui = st.selectbox("Valitse Gemini-malli:", ('gemini-1.5-pro', 'gemini-1.5-flash'))
@@ -189,7 +175,15 @@ else:
     if suorita_nappi:
         with st.status("Luodaan opetusta...", expanded=True) as status:
             status.write("[1/5] Luetaan lisämateriaalia...")
-            lisamateriaali_teksti = lue_ladattu_tiedosto(ladattu_tiedosto)
+            
+            # --- MUUTOS: Käydään läpi kaikki ladatut tiedostot ---
+            lisamateriaalit = []
+            if ladatut_tiedostot:
+                for tiedosto in ladatut_tiedostot:
+                    lisamateriaalit.append(lue_ladattu_tiedosto(tiedosto))
+            
+            lisamateriaali_teksti = "\n\n---\n\n".join(lisamateriaalit) # Yhdistetään kaikki tekstit
+            
             if lisamateriaali_teksti:
                 status.write(f"-> Lisämateriaalista luettu {len(lisamateriaali_teksti.split())} sanaa.")
 
@@ -221,7 +215,7 @@ else:
             progress_bar = st.progress(0)
             for i, otsikko in enumerate(sisallysluettelo):
                 status.update(label=f"Kirjoitetaan osiota {i+1}/{osioiden_maara}: \"{otsikko}\"...")
-                # Välitetään lisämateriaali eteenpäin
+                # Välitetään yhdistetty lisämateriaali eteenpäin
                 osio_teksti = kirjoita_osio(aihe, otsikko, list(kaikki_loydetyt_jakeet), lisamateriaali_teksti, sanamaara_per_osio, malli_valinta_ui, noudata_perusohjetta_luodessa)
                 if osio_teksti: koko_opetus.append(f"### {otsikko}\n\n{osio_teksti}\n\n")
                 progress_bar.progress((i + 1) / osioiden_maara)
