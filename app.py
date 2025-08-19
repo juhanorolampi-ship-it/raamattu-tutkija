@@ -5,6 +5,34 @@ import re
 import google.generativeai as genai
 import time
 
+# --- UUSI SALASANAN TARKISTUSFUNKTIO ---
+def check_password():
+    """Palauttaa True, jos salasana on oikein."""
+    # Yritetään hakea salasana Streamlitin salaisuuksista
+    try:
+        correct_password = st.secrets["APP_PASSWORD"]
+    except:
+        # Jos salasanaa ei ole asetettu, sallitaan käyttö (kehitystä varten)
+        return True
+
+    # Kysytään salasanaa käyttäjältä
+    password = st.text_input("Syötä salasana", type="password")
+    if not password:
+        st.stop() # Pysäytetään suoritus, jos salasanaa ei ole syötetty
+    
+    if password == correct_password:
+        return True
+    else:
+        st.error("Salasana on virheellinen.")
+        st.stop()
+
+# --- SOVELLUKSEN ALKU ---
+st.set_page_config(page_title="Älykäs Raamattu-tutkija", layout="wide")
+
+# UUSI LISÄYS: Suoritetaan salasanan tarkistus heti alussa
+if not check_password():
+    st.stop() # Pysäytetään, jos tarkistus epäonnistuu
+
 # ==============================================================================
 # Aseta oma Gemini API-avaimesi tähän.
 # ==============================================================================
@@ -181,4 +209,5 @@ if st.session_state.opetus_teksti:
     elif st.session_state.editori != st.session_state.opetus_teksti:
 
         st.session_state.opetus_teksti = st.session_state.editori
+
 
