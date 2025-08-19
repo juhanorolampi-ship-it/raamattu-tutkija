@@ -8,7 +8,7 @@ import docx
 import io
 
 # ==============================================================================
-# API-avaimen käsittely ja perusasetukset (pysyvät samoina)
+# API-avaimen käsittely ja perusasetukset
 # ==============================================================================
 TEOLOGINEN_PERUSOHJE = """
 TÄRKEÄ PERUSOHJE: Olet teologinen assistentti, jonka ainoa ja tärkein tehtävä on auttaa käyttäjää ymmärtämään annettua Raamatun tekstiä sen omassa kontekstissa ja Raamatun kokonaisilmoituksen valossa.
@@ -61,9 +61,7 @@ def lue_ladattu_tiedosto(uploaded_file):
         
         if file_extension == 'pdf':
             pdf_reader = PyPDF2.PdfReader(file_bytes)
-            text = ""
-            for page in pdf_reader.pages:
-                text += page.extract_text() + "\n"
+            text = "".join(page.extract_text() + "\n" for page in pdf_reader.pages)
             return text
         elif file_extension == 'docx':
             doc = docx.Document(file_bytes)
@@ -149,7 +147,7 @@ st.set_page_config(page_title="Älykäs Raamattu-tutkija", layout="wide")
 if not st.session_state.password_correct:
     check_password()
 else:
-    st.title("📖 Älykäs Raamattu-tutkija v5.1")
+    st.title("📖 Älykäs Raamattu-tutkija v5.2")
     bible_data, book_map, book_name_map = lataa_raamattu()
 
     try:
@@ -163,16 +161,17 @@ else:
         
         # --- KORJATTU PROJEKTIN LATAUSOSIO ---
         st.header("Jatka aiempaa projektia")
-        ladattu_projekti = st.file_uploader("Lataa projektitiedosto (.txt)", type=['txt'], key="projektin_lataus")
+        ladattu_projekti = st.file_uploader("Lataa projektitiedosto (.txt)", type=['txt'])
+        
+        # Käsittellään ladattu tiedosto heti kun se ilmestyy
         if ladattu_projekti is not None:
             projekti_teksti = lue_ladattu_tiedosto(ladattu_projekti)
             st.session_state.opetus_teksti = projekti_teksti
-            # Tyhjennetään latauskenttä estämään uudelleenlataus
-            st.session_state.projektin_lataus = []
-            st.rerun()
-        
-        st.divider()
+            # Emme enää käytä rerun()-komentoa, joka aiheutti ongelman
+            st.info("Projekti ladattu onnistuneesti. Voit nyt muokata sitä.")
 
+
+        st.divider()
         st.header("Luo uusi opetus")
         aihe = st.text_area("Mistä aiheesta haluat luoda opetuksen?", "Jumalan kutsu", height=100)
         
@@ -235,7 +234,6 @@ else:
     if st.session_state.opetus_teksti:
         st.header("Työstettävä opetus")
         sanojen_maara = len(st.session_state.opetus_teksti.split())
-        
         st.download_button(
             label="Tallenna projekti tiedostona (.txt)",
             data=st.session_state.opetus_teksti,
