@@ -8,7 +8,7 @@ import time
 # ==============================================================================
 # Aseta oma Gemini API-avaimesi tähän.
 # ==============================================================================
-OMA_API_AVAIN = "AIzaSyD-ijPmzZzBZYHI05yN3wperW0P04bkbmI"
+OMA_API_AVAIN = "xxxxxx"
 # ==============================================================================
 
 # (Teologinen perusohje ja CSS-muotoilut pysyvät samoina)
@@ -179,4 +179,5 @@ if st.session_state.opetus_teksti:
     
     # Päivitetään muistiin, jos käyttäjä muokkaa tekstiä käsin
     elif st.session_state.editori != st.session_state.opetus_teksti:
+
         st.session_state.opetus_teksti = st.session_state.editori
