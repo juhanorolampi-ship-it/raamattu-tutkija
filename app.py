@@ -8,7 +8,7 @@ import time
 # ==============================================================================
 # Aseta oma Gemini API-avaimesi tähän.
 # ==============================================================================
-OMA_API_AVAIN = "xxxxxx"
+OMA_API_AVAIN = st.secrets["GEMINI_API_KEY"]
 # ==============================================================================
 
 # (Teologinen perusohje ja CSS-muotoilut pysyvät samoina)
@@ -181,3 +181,4 @@ if st.session_state.opetus_teksti:
     elif st.session_state.editori != st.session_state.opetus_teksti:
 
         st.session_state.opetus_teksti = st.session_state.editori
+
