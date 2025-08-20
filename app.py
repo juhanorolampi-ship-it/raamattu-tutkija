@@ -62,7 +62,7 @@ def lataa_raamattu(tiedostonimi="bible.json"):
     return bible_data, book_map, book_name_map, book_data_map
 
 # ==============================================================================
-# VIITTAUSTEN TUNNISTUSFUNKTIO (v5 - Vankempi korjaus)
+# VIITTAUSTEN TUNNISTUSFUNKTIO (v6 - Uusi Regex)
 # ==============================================================================
 def etsi_viittaukset_tekstista(text, book_map, book_data_map):
     cleaned_text = re.sub(r'[()\[\]]', ' ', text)
@@ -70,56 +70,57 @@ def etsi_viittaukset_tekstista(text, book_map, book_data_map):
     all_references = []
     sorted_book_keys = sorted(book_map.keys(), key=len, reverse=True)
 
-    for part in parts:
-        pattern = re.compile(r'((?:\d\.\s)?[A-Za-zäöÄÖ\s\.]+?)\s+(\d+)(?::([\d\s,-]+))?', re.IGNORECASE)
-        matches = pattern.findall(part)
+    # Uusi, tarkempi regex, joka vaatii, että kirjan nimessä on kirjaimia.
+    # Esim. "Filemon 1" tai "1. Moos. 41" löytyy, mutta "2.3.3." ei.
+    pattern = re.compile(r'((?:\d\.\s)?[A-Za-zäöÄÖ][A-Za-zäöÄÖ\s\.]*?)\s+(\d+)(?::([\d\s,-]+))?', re.IGNORECASE)
+    matches = pattern.findall(text)
 
-        for match in matches:
-            book_name_raw, chapter_str, verses_str = match
-            book_key_raw = book_name_raw.strip().lower().replace('.', '').replace(' ', '')
-            
-            if not book_key_raw or not re.search(r'[a-zäö]', book_key_raw):
-                 continue
+    for match in matches:
+        book_name_raw, chapter_str, verses_str = match
+        book_key_raw = book_name_raw.strip().lower().replace('.', '').replace(' ', '')
+        
+        if not book_key_raw:
+             continue
 
-            found_key = None
-            for key in sorted_book_keys:
-                if key.startswith(book_key_raw):
-                    found_key = key
-                    break
+        found_key = None
+        for key in sorted_book_keys:
+            if key.startswith(book_key_raw):
+                found_key = key
+                break
+        
+        if found_key:
+            book_id, content = book_map[found_key]
+            book_proper_name = content['info'].get('name', book_name_raw.strip())
             
-            if found_key:
-                book_id, content = book_map[found_key]
-                book_proper_name = content['info'].get('name', book_name_raw.strip())
-                
-                if verses_str:
-                    verse_parts = verses_str.split(',')
-                    for verse_part in verse_parts:
-                        verse_part = verse_part.strip()
-                        if not verse_part: continue
-                        
-                        start_verse, end_verse = 0, 0
-                        if '-' in verse_part:
-                            try: start_verse, end_verse = map(int, verse_part.split('-'))
-                            except ValueError: continue
-                        else:
-                            try: start_verse = end_verse = int(verse_part)
-                            except ValueError: continue
-                        
-                        all_references.append({
-                            "book_id": book_id, "book_name": book_proper_name, "chapter": int(chapter_str),
-                            "start_verse": start_verse, "end_verse": end_verse,
-                            "original_match": f"{book_proper_name} {chapter_str}:{start_verse}" + (f"-{end_verse}" if start_verse != end_verse else "")
-                        })
-                else:
-                    try:
-                        last_verse_num = len(book_data_map[book_id]['chapter'][chapter_str]['verse'])
-                        all_references.append({
-                            "book_id": book_id, "book_name": book_proper_name, "chapter": int(chapter_str),
-                            "start_verse": 1, "end_verse": last_verse_num,
-                            "original_match": f"{book_proper_name} {chapter_str}"
-                        })
-                    except KeyError:
-                        continue
+            if verses_str:
+                verse_parts = verses_str.split(',')
+                for verse_part in verse_parts:
+                    verse_part = verse_part.strip()
+                    if not verse_part: continue
+                    
+                    start_verse, end_verse = 0, 0
+                    if '-' in verse_part:
+                        try: start_verse, end_verse = map(int, verse_part.split('-'))
+                        except ValueError: continue
+                    else:
+                        try: start_verse = end_verse = int(verse_part)
+                        except ValueError: continue
+                    
+                    all_references.append({
+                        "book_id": book_id, "book_name": book_proper_name, "chapter": int(chapter_str),
+                        "start_verse": start_verse, "end_verse": end_verse,
+                        "original_match": f"{book_proper_name} {chapter_str}:{start_verse}" + (f"-{end_verse}" if start_verse != end_verse else "")
+                    })
+            else:
+                try:
+                    last_verse_num = len(book_data_map[book_id]['chapter'][chapter_str]['verse'])
+                    all_references.append({
+                        "book_id": book_id, "book_name": book_proper_name, "chapter": int(chapter_str),
+                        "start_verse": 1, "end_verse": last_verse_num,
+                        "original_match": f"{book_proper_name} {chapter_str}"
+                    })
+                except KeyError:
+                    continue
     return all_references
 
 
@@ -245,7 +246,7 @@ st.set_page_config(page_title="Älykäs Raamattu-tutkija", layout="wide")
 if not st.session_state.password_correct:
     check_password()
 else:
-    st.title("📖 Älykäs Raamattu-tutkija v12.4")
+    st.title("📖 Älykäs Raamattu-tutkija v12.5")
     bible_data, book_map, book_name_map, book_data_map = lataa_raamattu()
 
     try:
@@ -330,26 +331,30 @@ else:
                 with st.spinner("Tarkistetaan viittauksia..."):
                     references_in_toc = etsi_viittaukset_tekstista(muokattu_sisallysluettelo, book_map, book_data_map)
                     
-                    # --- KORJAUS V12.4: TARKEMPI TARKISTUSLOGIIKKA ---
+                    # --- VIANETSINTÄ ALKAA ---
+                    st.info("Aloitetaan vianetsintä...")
+                    st.write("**Sisällysluettelosta löydetyt viittaukset:**", references_in_toc)
+                    # --- VIANETSINTÄ LOPPUU ---
+
                     existing_verses_list = [v.lower() for v in st.session_state.aineisto.get('jakeet', [])]
                     missing = []
                     
                     for ref in references_in_toc:
-                        # Oletetaan, että viittaus on kokonaisuudessaan puuttuva, kunnes toisin todistetaan
                         all_verses_in_ref_found = True
                         for verse_num in range(ref['start_verse'], ref['end_verse'] + 1):
                             ref_str_to_check = f'{ref["book_name"]} {ref["chapter"]}:{verse_num}'.lower()
                             
-                            # Tarkistetaan, löytyykö yksittäinen jae listasta
                             single_verse_found = False
                             for verse_line in existing_verses_list:
                                 if verse_line.startswith(ref_str_to_check + " -"):
                                     single_verse_found = True
                                     break
                             
-                            # Jos YKSIKÄÄN jae viittauksesta puuttuu, koko viittaus merkitään puuttuvaksi
                             if not single_verse_found:
                                 all_verses_in_ref_found = False
+                                # --- VIANETSINTÄ ALKAA ---
+                                st.warning(f"**PUUTTUU:** `{ref_str_to_check}`")
+                                # --- VIANETSINTÄ LOPPUU ---
                                 break
                         
                         if not all_verses_in_ref_found:
