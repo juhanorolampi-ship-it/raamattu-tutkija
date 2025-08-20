@@ -185,7 +185,7 @@ else:
     if st.session_state.step == 'input':
         with st.sidebar:
             st.header("Asetukset")
-            aihe = st.text_area("Mistä aiheesta?", "Jumalan kutsu", height=250)
+            aihe = st.text_area("Mistä aiheesta haluaisit laatia opetuksen?", "Jumalan kutsu", height=240)
             ladatut_tiedostot = st.file_uploader("Lataa lisämateriaalia", type=['txt', 'pdf', 'docx'], accept_multiple_files=True)
             st.subheader("Haun asetukset")
             jakeita_ennen = st.slider("Jakeita ennen osumaa:", 0, 10, 1)
@@ -310,3 +310,4 @@ Kirjoita noin [TÄYTÄ TAVOITESANAMÄÄRÄ TÄHÄN] sanan mittainen opetus. Käy
             st.session_state.step = 'input'
             st.session_state.aineisto = {}
             # MUUTOS: Turha ja ongelmia aiheuttanut st.rerun() on poistettu.
+
