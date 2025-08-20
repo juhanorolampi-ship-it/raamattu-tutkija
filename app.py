@@ -66,14 +66,12 @@ def lataa_raamattu(tiedostonimi="bible.json"):
 # ==============================================================================
 def etsi_viittaukset_tekstista(text, book_map, book_data_map):
     cleaned_text = re.sub(r'[()\[\]]', ' ', text)
-    parts = cleaned_text.replace('\n', ' ').split(';')
     all_references = []
     sorted_book_keys = sorted(book_map.keys(), key=len, reverse=True)
 
     # Uusi, tarkempi regex, joka vaatii, että kirjan nimessä on kirjaimia.
-    # Esim. "Filemon 1" tai "1. Moos. 41" löytyy, mutta "2.3.3." ei.
     pattern = re.compile(r'((?:\d\.\s)?[A-Za-zäöÄÖ][A-Za-zäöÄÖ\s\.]*?)\s+(\d+)(?::([\d\s,-]+))?', re.IGNORECASE)
-    matches = pattern.findall(text)
+    matches = pattern.findall(cleaned_text)
 
     for match in matches:
         book_name_raw, chapter_str, verses_str = match
@@ -246,7 +244,7 @@ st.set_page_config(page_title="Älykäs Raamattu-tutkija", layout="wide")
 if not st.session_state.password_correct:
     check_password()
 else:
-    st.title("📖 Älykäs Raamattu-tutkija v12.5")
+    st.title("📖 Älykäs Raamattu-tutkija v12.6")
     bible_data, book_map, book_name_map, book_data_map = lataa_raamattu()
 
     try:
@@ -309,65 +307,8 @@ else:
 
     elif st.session_state.step == 'review':
         st.header("2. Tarkista sisällysluettelo ja lähteet")
-        st.info("Voit nyt muokata sisällysluetteloa. Voit myös lisätä siihen Raamatun viittauksia (esim. Joh. 3:16, 21 tai Filemon 1), ja ohjelma tarkistaa, löytyvätkö ne jo lähteistä.")
 
-        muokattu_sisallysluettelo = st.text_area("Sisällysluettelo:", value=st.session_state.aineisto.get('sisallysluettelo', ''), height=300, key='sisallysluettelo_editori')
-        
-        st.subheader("Kerätty lähdemateriaali")
-        with st.expander(f"Näytä {len(st.session_state.aineisto.get('jakeet', []))} löydettyä jaetta"):
-            st.markdown("_Vinkki: Jos annoit yksityiskohtaisen aiheen, monet viittaukset ovat todennäköisesti jo tässä listassa._")
-            st.text_area("", value="\n".join(st.session_state.aineisto.get('jakeet', [])), height=300, key="jakeet_naytto")
-
-        with st.sidebar:
-            st.header("Luo lopputulos")
-            toimintatapa = st.radio("Mitä haluat tuottaa?", ("Valmis opetus (Optimoitu)", "Tutkimusraportti (Jatkojalostukseen)"), key="toimintatapa_valinta")
-            sanamaara = st.number_input("Tavoitesanamäärä (vain opetukselle)", min_value=300, max_value=20000, value=4000, step=100, key="sanamaara_valinta")
-            
-            if st.button("Tarkista sisällysluettelo ja jatka", type="primary"):
-                st.session_state.aineisto['sisallysluettelo'] = muokattu_sisallysluettelo
-                st.session_state.aineisto['toimintatapa'] = toimintatapa
-                st.session_state.aineisto['sanamaara'] = sanamaara
-
-                with st.spinner("Tarkistetaan viittauksia..."):
-                    references_in_toc = etsi_viittaukset_tekstista(muokattu_sisallysluettelo, book_map, book_data_map)
-                    
-                    # --- VIANETSINTÄ ALKAA ---
-                    st.info("Aloitetaan vianetsintä...")
-                    st.write("**Sisällysluettelosta löydetyt viittaukset:**", references_in_toc)
-                    # --- VIANETSINTÄ LOPPUU ---
-
-                    existing_verses_list = [v.lower() for v in st.session_state.aineisto.get('jakeet', [])]
-                    missing = []
-                    
-                    for ref in references_in_toc:
-                        all_verses_in_ref_found = True
-                        for verse_num in range(ref['start_verse'], ref['end_verse'] + 1):
-                            ref_str_to_check = f'{ref["book_name"]} {ref["chapter"]}:{verse_num}'.lower()
-                            
-                            single_verse_found = False
-                            for verse_line in existing_verses_list:
-                                if verse_line.startswith(ref_str_to_check + " -"):
-                                    single_verse_found = True
-                                    break
-                            
-                            if not single_verse_found:
-                                all_verses_in_ref_found = False
-                                # --- VIANETSINTÄ ALKAA ---
-                                st.warning(f"**PUUTTUU:** `{ref_str_to_check}`")
-                                # --- VIANETSINTÄ LOPPUU ---
-                                break
-                        
-                        if not all_verses_in_ref_found:
-                            missing.append(ref)
-                
-                if not missing:
-                    st.session_state.missing_verses = None
-                    st.session_state.step = 'output'
-                    st.rerun()
-                else:
-                    st.session_state.missing_verses = missing
-                    st.rerun()
-
+        # --- KÄYTTÖLIITTYMÄPARANNUS: Varoitus näkyy nyt heti ylhäällä ---
         if st.session_state.missing_verses:
             st.warning("⚠️ **Huomio!** Seuraavia sisällysluettelossa mainittuja viittauksia ei löytynyt kerätystä lähdemateriaalista:")
             missing_refs_str = [f'- {ref["original_match"]}' for ref in st.session_state.missing_verses]
@@ -395,6 +336,56 @@ else:
                 if st.button("Ei, jatka ilman näitä jakeita"):
                     st.session_state.missing_verses = None
                     st.session_state.step = 'output'
+                    st.rerun()
+        
+        st.info("Voit nyt muokata sisällysluetteloa. Voit myös lisätä siihen Raamatun viittauksia (esim. Joh. 3:16, 21 tai Filemon 1), ja ohjelma tarkistaa, löytyvätkö ne jo lähteistä.")
+        muokattu_sisallysluettelo = st.text_area("Sisällysluettelo:", value=st.session_state.aineisto.get('sisallysluettelo', ''), height=300, key='sisallysluettelo_editori')
+        
+        st.subheader("Kerätty lähdemateriaali")
+        with st.expander(f"Näytä {len(st.session_state.aineisto.get('jakeet', []))} löydettyä jaetta"):
+            st.markdown("_Vinkki: Jos annoit yksityiskohtaisen aiheen, monet viittaukset ovat todennäköisesti jo tässä listassa._")
+            st.text_area("", value="\n".join(st.session_state.aineisto.get('jakeet', [])), height=300, key="jakeet_naytto")
+
+        with st.sidebar:
+            st.header("Luo lopputulos")
+            toimintatapa = st.radio("Mitä haluat tuottaa?", ("Valmis opetus (Optimoitu)", "Tutkimusraportti (Jatkojalostukseen)"), key="toimintatapa_valinta")
+            sanamaara = st.number_input("Tavoitesanamäärä (vain opetukselle)", min_value=300, max_value=20000, value=4000, step=100, key="sanamaara_valinta")
+            
+            if st.button("Tarkista sisällysluettelo ja jatka", type="primary"):
+                st.session_state.aineisto['sisallysluettelo'] = muokattu_sisallysluettelo
+                st.session_state.aineisto['toimintatapa'] = toimintatapa
+                st.session_state.aineisto['sanamaara'] = sanamaara
+
+                with st.spinner("Tarkistetaan viittauksia..."):
+                    references_in_toc = etsi_viittaukset_tekstista(muokattu_sisallysluettelo, book_map, book_data_map)
+                    
+                    existing_verses_list = [v.lower() for v in st.session_state.aineisto.get('jakeet', [])]
+                    missing = []
+                    
+                    for ref in references_in_toc:
+                        all_verses_in_ref_found = True
+                        for verse_num in range(ref['start_verse'], ref['end_verse'] + 1):
+                            ref_str_to_check = f'{ref["book_name"]} {ref["chapter"]}:{verse_num}'.lower()
+                            
+                            single_verse_found = False
+                            for verse_line in existing_verses_list:
+                                if verse_line.startswith(ref_str_to_check + " -"):
+                                    single_verse_found = True
+                                    break
+                            
+                            if not single_verse_found:
+                                all_verses_in_ref_found = False
+                                break
+                        
+                        if not all_verses_in_ref_found:
+                            missing.append(ref)
+                
+                if not missing:
+                    st.session_state.missing_verses = None
+                    st.session_state.step = 'output'
+                    st.rerun()
+                else:
+                    st.session_state.missing_verses = missing
                     st.rerun()
 
     elif st.session_state.step == 'output':
