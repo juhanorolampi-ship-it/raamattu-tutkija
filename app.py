@@ -23,6 +23,10 @@ st.markdown("""
 <style>
 .stMarkdown p, .stTextArea textarea, .stTextInput input, .stButton button { font-family: 'Times New Roman', Times, serif; }
 .stMarkdown p, .stTextArea textarea { font-size: 11pt; }
+/* Estetään "Press Ctrl+Enter to apply" -teksti */
+.stTextArea [data-testid="stMarkdownContainer"] p {
+    display: none;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -152,7 +156,7 @@ def check_password():
         if st.button("Kirjaudu"):
             if password == correct_password: 
                 st.session_state.password_correct = True
-                st.session_state.login_toast_shown = False # Nollataan, jotta ilmoitus näkyy joka kerta
+                st.session_state.login_toast_shown = False
                 st.rerun()
             else:
                 st.error("Salasana on virheellinen.")
@@ -174,22 +178,20 @@ else:
         st.error("API-avainta ei löydy. Varmista, että olet asettanut GEMINI_API_KEY -salaisuuden Streamlitin asetuksissa.")
         st.stop()
     
-    # MUUTOS: "Kirjautuminen onnistui" -ilmoitus näytetään vain kerran
     if not st.session_state.login_toast_shown:
         st.toast("Kirjautuminen onnistui!", icon="🎉")
         st.session_state.login_toast_shown = True
 
-    # VAIHE 1: ALOITUSNÄKYMÄ
     if st.session_state.step == 'input':
         with st.sidebar:
             st.header("Asetukset")
-            aihe = st.text_area("Mistä aiheesta?", "Jumalan kutsu", height=150) # MUUTOS: Kenttä on korkeampi
+            aihe = st.text_area("Mistä aiheesta?", "Jumalan kutsu", height=200)
             ladatut_tiedostot = st.file_uploader("Lataa lisämateriaalia", type=['txt', 'pdf', 'docx'], accept_multiple_files=True)
             st.subheader("Haun asetukset")
-            jakeita_ennen = st.slider("Jakeita ennen osumaa:", 0, 10, 1) # MUUTOS: Oletusarvo
-            jakeita_jalkeen = st.slider("Jakeita osuman jälkeen:", 0, 10, 2) # MUUTOS: Oletusarvo
+            jakeita_ennen = st.slider("Jakeita ennen osumaa:", 0, 10, 1)
+            jakeita_jalkeen = st.slider("Jakeita osuman jälkeen:", 0, 10, 2)
             st.subheader("Tekoälyn asetukset")
-            malli_valinta_ui = st.selectbox("Valitse Gemini-malli:", ('gemini-1.5-flash', 'gemini-1.5-pro')) # MUUTOS: Oletusarvo
+            malli_valinta_ui = st.selectbox("Valitse Gemini-malli:", ('gemini-1.5-flash', 'gemini-1.5-pro'))
             noudata_perusohjetta_luodessa = st.checkbox("Noudata teologista perusohjetta", value=True)
             
             if st.button("Aloita tutkimus", type="primary"):
@@ -220,7 +222,6 @@ else:
                     st.session_state.step = 'review'
                     st.rerun()
 
-    # VAIHE 2: SISÄLLYSLUETTELON TARKASTUS
     elif st.session_state.step == 'review':
         st.header("2. Tarkista ja muokkaa sisällysluetteloa")
         st.info("Tekoäly on luonut ehdotuksen sisällysluetteloksi ja kerännyt lähdemateriaalin. Voit nyt muokata sisällysluetteloa ennen lopullisen tekstin luomista.")
@@ -243,7 +244,6 @@ else:
                 st.session_state.step = 'output'
                 st.rerun()
 
-    # VAIHE 3: LOPPUTULOKSEN LUONTI JA NÄYTTÖ
     elif st.session_state.step == 'output':
         aineisto = st.session_state.aineisto
         lopputulos = ""
@@ -297,15 +297,19 @@ Kirjoita noin [TÄYTÄ TAVOITESANAMÄÄRÄ TÄHÄN] sanan mittainen opetus. Käy
         st.header("Valmis tuotos")
         sanojen_maara = len(lopputulos.split())
         info_teksti = f"Sanamäärä: **{sanojen_maara}**"
-        if 'suodatettu_jaemaara' in aineisto:
-            alkuperainen_maara = len(aineisto.get('jakeet', []))
-            info_teksti += f" | Käytettyjä jakeita: **{aineisto['suodatettu_jaemaara']} / {alkuperainen_maara}**"
+        
+        # KORJATTU RAPORTOINTI
+        alkuperainen_maara = len(aineisto.get('jakeet', []))
+        if aineisto.get('toimintatapa') == "Valmis opetus (Optimoitu)":
+            suodatettu_maara = aineisto.get('suodatettu_jaemaara', alkuperainen_maara)
+            info_teksti += f" | Jakeita (Alkup. / Suodatettu): **{alkuperainen_maara} / {suodatettu_maara}**"
+        else: # Raportti-näkymä
+             info_teksti += f" | Jakeita yhteensä: **{alkuperainen_maara}**"
         
         st.info(info_teksti)
         st.download_button("Lataa tiedostona (.txt)", data=lopputulos, file_name="lopputulos.txt")
         st.text_area("Lopputulos:", value=lopputulos, height=600)
 
-        # MUUTOS: "Aloita alusta" on nimetty uudelleen
         if st.button("Uusi tutkimus"):
             st.session_state.step = 'input'
             st.session_state.aineisto = {}
