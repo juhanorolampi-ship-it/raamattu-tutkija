@@ -62,16 +62,19 @@ def lataa_raamattu(tiedostonimi="bible.json"):
     return bible_data, book_map, book_name_map, book_data_map
 
 # ==============================================================================
-# KOKONAAN UUSITTU, JOUSTAVA VIITTAUSTEN TUNNISTUSFUNKTIO (v3)
+# KOKONAAN UUSITTU, JOUSTAVA VIITTAUSTEN TUNNISTUSFUNKTIO (v4 - Korjattu)
 # ==============================================================================
 def etsi_viittaukset_tekstista(text, book_map, book_data_map):
-    parts = text.replace('\n', ' ').split(';')
+    # Poistetaan sulkeet ja erikoismerkit numeroiden ympäriltä selkeyden vuoksi
+    cleaned_text = re.sub(r'[()\[\]]', ' ', text)
+    parts = cleaned_text.replace('\n', ' ').split(';')
     all_references = []
-    
+
     # Järjestetään kirja-avaimet pituuden mukaan laskevasti, jotta "1. kun" tunnistuu ennen "kun"
     sorted_book_keys = sorted(book_map.keys(), key=len, reverse=True)
 
     for part in parts:
+        # Regex etsii nyt kirjaa, lukua ja mahdollisia jakeita
         pattern = re.compile(r'((?:\d\.\s)?[A-Za-zäöÄÖ\s\.]+?)\s+(\d+)(?::([\d\s,-]+))?', re.IGNORECASE)
         matches = pattern.findall(part)
 
@@ -79,7 +82,12 @@ def etsi_viittaukset_tekstista(text, book_map, book_data_map):
             book_name_raw, chapter_str, verses_str = match
             book_key_raw = book_name_raw.strip().lower().replace('.', '').replace(' ', '')
             
-            # Etsitään vastaava avain, joka alkaa käyttäjän syötteellä
+            # --- TÄMÄ ON UUSI KORJAUS ---
+            # Ohitetaan osumat, jotka ovat todennäköisesti listan järjestysnumeroita (esim. "1.", "2.")
+            if len(book_key_raw) <= 2 and book_key_raw.isdigit():
+                continue
+            # ---------------------------
+
             found_key = None
             for key in sorted_book_keys:
                 if key.startswith(book_key_raw):
@@ -131,11 +139,11 @@ def hae_tarkka_viittaus(ref, book_data_map, book_name_map, ennen, jalkeen):
     try:
         chapter_data = book_data_map[book_id]['chapter'][chapter_str]['verse']
         for verse_num in range(ref["start_verse"], ref["end_verse"] + 1):
-             for i in range(verse_num - ennen, verse_num + jalkeen + 1):
-                verse_str = str(i)
-                if verse_str in chapter_data:
-                    verse_text = chapter_data[verse_str]['text']
-                    found_verses.add(f"{book_proper_name} {chapter_str}:{verse_str} - {verse_text}")
+                for i in range(verse_num - ennen, verse_num + jalkeen + 1):
+                    verse_str = str(i)
+                    if verse_str in chapter_data:
+                        verse_text = chapter_data[verse_str]['text']
+                        found_verses.add(f"{book_proper_name} {chapter_str}:{verse_str} - {verse_text}")
     except KeyError:
         return []
     return list(found_verses)
@@ -245,7 +253,7 @@ st.set_page_config(page_title="Älykäs Raamattu-tutkija", layout="wide")
 if not st.session_state.password_correct:
     check_password()
 else:
-    st.title("📖 Älykäs Raamattu-tutkija v12.0")
+    st.title("📖 Älykäs Raamattu-tutkija v12.1")
     bible_data, book_map, book_name_map, book_data_map = lataa_raamattu()
 
     try:
@@ -404,15 +412,19 @@ else:
         if aineisto['toimintatapa'] == "Valmis opetus (Optimoitu)":
             with st.status("Kirjoitetaan opetusta...", expanded=True) as status:
                 sisallysluettelo = [rivi.strip() for rivi in aineisto['sisallysluettelo'].split('\n') if rivi.strip()]
-                status.write(f"Kirjoitetaan opetus osio kerrallaan...")
                 koko_opetus, osioiden_maara = [], len(sisallysluettelo)
                 sanamaara_per_osio = aineisto['sanamaara'] // osioiden_maara if osioiden_maara > 0 else aineisto['sanamaara']
                 
                 for i, otsikko in enumerate(sisallysluettelo):
+                    # --- TÄMÄ ON UUSI PARANNUS ---
+                    status.write(f"Kirjoitetaan osiota {i+1}/{osioiden_maara}: {otsikko}...")
+                    # ---------------------------
                     relevantit_jakeet = jae_kartta.get(otsikko, []) if jae_kartta else aineisto['jakeet']
                     osio_teksti = kirjoita_osio(aineisto['aihe'], otsikko, relevantit_jakeet, aineisto['lisamateriaali'], sanamaara_per_osio, aineisto['malli'], aineisto['noudata_ohjetta'])
                     if osio_teksti:
                         koko_opetus.append(f"### {otsikko}\n\n{osio_teksti}\n\n")
+                
+                status.update(label="Opetus on valmis!", state="complete", expanded=False)
                 lopputulos = "".join(koko_opetus)
 
         elif aineisto['toimintatapa'] == "Tutkimusraportti (Jatkojalostukseen)":
@@ -448,3 +460,4 @@ Kirjoita noin [TÄYTÄ TAVOITESANAMÄÄRÄ TÄHÄN] sanan mittainen opetus. Käy
         st.info(info_teksti)
         st.download_button("Lataa tiedostona (.txt)", data=lopputulos, file_name="lopputulos.txt")
         st.text_area("Lopputulos:", value=lopputulos, height=600)
+
