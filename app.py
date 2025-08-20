@@ -35,7 +35,7 @@ if 'aineisto' not in st.session_state:
     st.session_state.aineisto = {}
 if 'login_toast_shown' not in st.session_state:
     st.session_state.login_toast_shown = False
-if 'missing_verses' not in st.session_state: # UUSI tilamuuttuja
+if 'missing_verses' not in st.session_state:
     st.session_state.missing_verses = None
 
 
@@ -61,48 +61,59 @@ def lataa_raamattu(tiedostonimi="bible.json"):
                 if key: book_map[key] = target
     return bible_data, book_map, book_name_map, book_data_map
 
-# UUSI FUNKTIO: Etsii tekstistä Raamatun viittauksia
 def etsi_viittaukset_tekstista(text, book_map):
-    pattern = re.compile(r'((?:\d\.\s)?[A-Za-zäöÄÖ\s]+?)\s+(\d+):(\d+(?:-\d+)?)', re.IGNORECASE)
+    pattern = re.compile(r'((?:\d\.\s)?[A-Za-zäöÄÖ\s\.]+?)\s+(\d+):(\d+(?:-\d+)?)', re.IGNORECASE)
     matches = pattern.findall(text)
     
     parsed_references = []
+    book_keys = list(book_map.keys())
+
     for match in matches:
         book_name_raw, chapter, verse_range = match
-        book_key = book_name_raw.strip().lower().replace('.', '').replace(' ', '')
+        key_to_find = book_name_raw.strip().lower().replace('.', '').replace(' ', '')
         
-        if book_key in book_map:
-            book_id, _ = book_map[book_key]
+        if key_to_find in book_keys:
+            book_id, _ = book_map[key_to_find]
             verses = verse_range.split('-')
             start_verse = int(verses[0])
             end_verse = int(verses[1]) if len(verses) > 1 else start_verse
+            
+            proper_name = None
+            for key, (id_val, content) in book_map.items():
+                if id_val == book_id:
+                    proper_name = content['info'].get('name', book_name_raw.strip())
+                    break
+
             parsed_references.append({
                 "book_id": book_id,
-                "book_name": book_name_raw.strip(),
+                "book_name": proper_name or book_name_raw.strip(),
                 "chapter": int(chapter),
                 "start_verse": start_verse,
-                "end_verse": end_verse
+                "end_verse": end_verse,
+                "original_match": f"{book_name_raw.strip()} {chapter}:{verse_range}"
             })
     return parsed_references
 
-# UUSI FUNKTIO: Hakee tarkan viittauksen ja laajentaa sitä
 def hae_tarkka_viittaus(ref, book_data_map, book_name_map, ennen, jalkeen):
-    found_verses = []
+    found_verses = set()
     book_id = ref["book_id"]
     chapter_str = str(ref["chapter"])
     book_proper_name = book_name_map.get(book_id, ref["book_name"])
 
     try:
         chapter_data = book_data_map[book_id]['chapter'][chapter_str]['verse']
-        for i in range(ref["start_verse"] - ennen, ref["end_verse"] + jalkeen + 1):
-            verse_str = str(i)
-            if verse_str in chapter_data:
-                verse_text = chapter_data[verse_str]['text']
-                found_verses.append(f"{book_proper_name} {chapter_str}:{verse_str} - {verse_text}")
+        start_range = ref["start_verse"] - ennen
+        end_range = ref["end_verse"] + jalkeen
+        
+        for verse_num in range(ref["start_verse"], ref["end_verse"] + 1):
+             for i in range(verse_num - ennen, verse_num + jalkeen + 1):
+                verse_str = str(i)
+                if verse_str in chapter_data:
+                    verse_text = chapter_data[verse_str]['text']
+                    found_verses.add(f"{book_proper_name} {chapter_str}:{verse_str} - {verse_text}")
     except KeyError:
-        # Chapter or verse not found, return empty
         return []
-    return found_verses
+    return list(found_verses)
 
 
 def lue_ladattu_tiedosto(uploaded_file):
@@ -154,10 +165,10 @@ def etsi_ja_laajenna(bible_data, book_map, book_name_map, book_data_map, sana, k
     
     return list(laajennetut_jakeet)
 
-def tee_api_kutsu(prompt, mallI, noudata_perusohjetta=True):
+def tee_api_kutsu(prompt, malli, noudata_perusohjetta=True):
     final_prompt = f"{TEOLOGINEN_PERUSOHJE}\n\n---\n\nKÄYTTÄJÄN PYYNTÖ:\n{prompt}" if noudata_perusohjetta else prompt
     try:
-        model = genai.GenerativeModel(mallI)
+        model = genai.GenerativeModel(malli)
         response = model.generate_content(final_prompt)
         time.sleep(1) 
         return response.text
@@ -211,7 +222,7 @@ st.set_page_config(page_title="Älykäs Raamattu-tutkija", layout="wide")
 if not st.session_state.password_correct:
     check_password()
 else:
-    st.title("📖 Älykäs Raamattu-tutkija v11.0")
+    st.title("📖 Älykäs Raamattu-tutkija v11.2")
     bible_data, book_map, book_name_map, book_data_map = lataa_raamattu()
 
     try:
@@ -227,6 +238,7 @@ else:
     if st.session_state.step == 'input':
         with st.sidebar:
             st.header("Asetukset")
+            # KORJATTU: Palautettu pyytämäsi teksti ja korkeus
             aihe = st.text_area("Mikä on opetuksen aihe? Muista tarkka määrittely", "Jumalan kutsu", height=200)
             ladatut_tiedostot = st.file_uploader("Lataa lisämateriaalia", type=['txt', 'pdf', 'docx'], accept_multiple_files=True)
             st.subheader("Haun asetukset")
@@ -242,33 +254,43 @@ else:
                         'aihe': aihe,
                         'malli': malli_valinta_ui,
                         'noudata_ohjetta': noudata_perusohjetta_luodessa,
-                        'jakeita_ennen': jakeita_ennen,  # MUUTOS: Tallenetaan arvo
-                        'jakeita_jalkeen': jakeita_jalkeen # MUUTOS: Tallenetaan arvo
+                        'jakeita_ennen': jakeita_ennen,
+                        'jakeita_jalkeen': jakeita_jalkeen
                     }
                     lisamateriaalit = [lue_ladattu_tiedosto(tiedosto) for tiedosto in ladatut_tiedostot] if ladatut_tiedostot else []
                     st.session_state.aineisto['lisamateriaali'] = "\n\n---\n\n".join(lisamateriaalit)
 
-                    suunnitelma_prompt = f"Luo JSON-muodossa lista avainsanoista ('hakusanat') ja Raamatun kirjoista ('kirjat') aiheelle '{aihe}'."
-                    suunnitelma_str = tee_api_kutsu(suunnitelma_prompt, 'gemini-1.5-flash', noudata_perusohjetta_luodessa)
-                    try: suunnitelma = json.loads(suunnitelma_str.strip().replace("```json", "").replace("```", ""))
-                    except: suunnitelma = {"hakusanat": aihe.split(), "kirjat": []}
-                    
                     kaikki_loydetyt_jakeet = set()
+                    
+                    st.write("Haetaan jakeita suoraan aihe-kuvauksesta...")
+                    initial_refs = etsi_viittaukset_tekstista(aihe, book_map)
+                    for ref in initial_refs:
+                        fetched_verses = hae_tarkka_viittaus(ref, book_data_map, book_name_map, jakeita_ennen, jakeita_jalkeen)
+                        for verse in fetched_verses:
+                            kaikki_loydetyt_jakeet.add(verse)
+                    
+                    st.write("Tehdään tekoälypohjainen haku...")
+                    suunnitelma_prompt = f"Luo JSON-muodossa lista avainsanoista ('hakusanat') ja Raamatun kirjoista ('kirjat') aiheelle '{aihe}'. ÄLÄ sisällytä vastaukseen Raamatun viittauksia, jotka ovat jo aiheessa."
+                    suunnitelma_str = tee_api_kutsu(suunnitelma_prompt, 'gemini-1.5-flash', noudata_perusohjetta_luodessa)
+                    try: 
+                        suunnitelma = json.loads(suunnitelma_str.strip().replace("```json", "").replace("```", ""))
+                    except: 
+                        suunnitelma = {"hakusanat": aihe.split(), "kirjat": []}
+                    
                     for kirja in suunnitelma.get("kirjat", []):
                         for sana in suunnitelma.get("hakusanat", []):
                             for jae in etsi_ja_laajenna(bible_data, book_map, book_name_map, book_data_map, sana, kirja, jakeita_ennen, jakeita_jalkeen):
                                 kaikki_loydetyt_jakeet.add(jae)
+                    
                     st.session_state.aineisto['jakeet'] = sorted(list(kaikki_loydetyt_jakeet))
 
+                    st.write("Luodaan sisällysluettelo...")
                     sisallysluettelo_str = luo_sisallysluettelo(aihe, malli_valinta_ui, noudata_perusohjetta_luodessa)
                     st.session_state.aineisto['sisallysluettelo'] = sisallysluettelo_str
                     
                     st.session_state.step = 'review'
                     st.rerun()
 
-    # ==============================================================================
-    # KOKO REVIEW-VAIHE ON UUDISTETTU TÄYSIN
-    # ==============================================================================
     elif st.session_state.step == 'review':
         st.header("2. Tarkista sisällysluettelo ja lähteet")
         st.info("Voit nyt muokata sisällysluetteloa. Voit myös lisätä siihen Raamatun viittauksia (esim. Joh. 3:16), ja ohjelma tarkistaa, löytyvätkö ne jo lähteistä.")
@@ -296,13 +318,12 @@ else:
 
                 with st.spinner("Tarkistetaan viittauksia..."):
                     references = etsi_viittaukset_tekstista(muokattu_sisallysluettelo, book_map)
-                    existing_verses_text = "\n".join(st.session_state.aineisto.get('jakeet', []))
+                    existing_verses_text = "\n".join(st.session_state.aineisto.get('jakeet', [])).lower()
                     
                     missing = []
                     for ref in references:
-                        # Yksinkertaistettu tarkistus: löytyykö viittaus tekstimuodossa
-                        ref_str_simple = f'{ref["book_name"]} {ref["chapter"]}:{ref["start_verse"]}'
-                        if ref_str_simple.lower() not in existing_verses_text.lower():
+                        ref_str_simple = f'{ref["book_name"]} {ref["chapter"]}:{ref["start_verse"]}'.lower()
+                        if ref_str_simple not in existing_verses_text:
                             missing.append(ref)
                 
                 if not missing:
@@ -313,14 +334,10 @@ else:
                     st.session_state.missing_verses = missing
                     st.rerun()
 
-        # Jos puuttuvia jakeita löytyi, näytetään tämä käyttöliittymä
         if st.session_state.missing_verses:
             st.warning("⚠️ **Huomio!** Seuraavia sisällysluettelossa mainittuja viittauksia ei löytynyt kerätystä lähdemateriaalista:")
             
-            missing_refs_str = []
-            for ref in st.session_state.missing_verses:
-                verserange = f'{ref["start_verse"]}-{ref["end_verse"]}' if ref["start_verse"] != ref["end_verse"] else ref["start_verse"]
-                missing_refs_str.append(f'- {ref["book_name"]} {ref["chapter"]}:{verserange}')
+            missing_refs_str = [f'- {ref["original_match"]}' for ref in st.session_state.missing_verses]
             st.markdown("\n".join(missing_refs_str))
 
             st.write("Haluatko hakea nämä puuttuvat jakeet ja lisätä ne lähdemateriaaliin ennen jatkamista?")
@@ -332,9 +349,7 @@ else:
                         newly_fetched = set(st.session_state.aineisto.get('jakeet', []))
                         for ref in st.session_state.missing_verses:
                             fetched = hae_tarkka_viittaus(
-                                ref,
-                                book_data_map,
-                                book_name_map,
+                                ref, book_data_map, book_name_map,
                                 st.session_state.aineisto['jakeita_ennen'],
                                 st.session_state.aineisto['jakeita_jalkeen']
                             )
@@ -408,7 +423,7 @@ Kirjoita noin [TÄYTÄ TAVOITESANAMÄÄRÄ TÄHÄN] sanan mittainen opetus. Käy
         if aineisto.get('toimintatapa') == "Valmis opetus (Optimoitu)":
             sanojen_maara = len(lopputulos.split())
             info_teksti = f"Sanamäärä: **{sanojen_maara}** | Jakeita (Alkup. / Suodatettu): **{alkuperainen_maara} / {suodatettu_maara}**"
-        else: # Tutkimusraportti-näkymä
+        else:
             info_teksti = f"Jakeita (Alkup. / Suodatettu): **{alkuperainen_maara} / {suodatettu_maara}**"
         
         st.info(info_teksti)
@@ -418,5 +433,5 @@ Kirjoita noin [TÄYTÄ TAVOITESANAMÄÄRÄ TÄHÄN] sanan mittainen opetus. Käy
         if st.button("Uusi tutkimus"):
             st.session_state.step = 'input'
             st.session_state.aineisto = {}
-            st.session_state.missing_verses = None # Nollaus
-
+            st.session_state.missing_verses = None
+            st.rerun()
