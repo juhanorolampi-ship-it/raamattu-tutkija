@@ -200,7 +200,6 @@ def jarjestele_jakeet_osioihin(sisallysluettelo, jakeet, malli, noudata_perusohj
         st.warning("Jakeiden automaattinen järjestely epäonnistui.")
         return None
 
-# KORJAUS: Lisätty kehotteeseen ohje toiston välttämisestä.
 def kirjoita_osio(aihe, osion_otsikko, jakeet, lisamateriaali, sanamaara_osio, malli, noudata_perusohjetta):
     jae_teksti = "\n".join(jakeet) if jakeet else "Ei Raamattu-jakeita tähän osioon."
     lisamateriaali_osio = f"\n\n--- KÄYTTÄJÄN ANTAMA LISÄMATERIAALI ---\n{lisamateriaali}" if lisamateriaali else ""
@@ -232,7 +231,7 @@ st.set_page_config(page_title="Älykäs Raamattu-tutkija", layout="wide")
 if not st.session_state.password_correct:
     check_password()
 else:
-    st.title("📖 Älykäs Raamattu-tutkija v11.6")
+    st.title("📖 Älykäs Raamattu-tutkija v11.7")
     bible_data, book_map, book_name_map, book_data_map = lataa_raamattu()
 
     try:
@@ -320,12 +319,14 @@ else:
                     for verse_line in st.session_state.aineisto.get('jakeet', []):
                         match = re.match(r'(.+? \d+:\d+)', verse_line)
                         if match:
-                            existing_refs_set.add(match.group(1))
+                            # KORJAUS: Varmistetaan vertailun luotettavuus (case-insensitive)
+                            existing_refs_set.add(match.group(1).lower())
 
                     missing = []
                     for ref in references:
                         ref_start_str = f'{ref["book_name"]} {ref["chapter"]}:{ref["start_verse"]}'
-                        if ref_start_str not in existing_refs_set:
+                        # KORJAUS: Varmistetaan vertailun luotettavuus (case-insensitive)
+                        if ref_start_str.lower() not in existing_refs_set:
                              missing.append(ref)
                 
                 if not missing:
