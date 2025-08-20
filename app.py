@@ -212,7 +212,6 @@ def jarjestele_jakeet_osioihin(sisallysluettelo, jakeet, malli, noudata_perusohj
         cleaned_response = vastaus_str.strip().replace("```json", "").replace("```", "")
         return json.loads(cleaned_response)
     except (json.JSONDecodeError, AttributeError):
-        # Tässä palautetaan None, jos järjestely epäonnistuu
         return None
 
 def kirjoita_osio(aihe, osion_otsikko, jakeet, lisamateriaali, sanamaara_osio, malli, noudata_perusohjetta):
@@ -246,7 +245,7 @@ st.set_page_config(page_title="Älykäs Raamattu-tutkija", layout="wide")
 if not st.session_state.password_correct:
     check_password()
 else:
-    st.title("📖 Älykäs Raamattu-tutkija v12.3")
+    st.title("📖 Älykäs Raamattu-tutkija v12.4")
     bible_data, book_map, book_name_map, book_data_map = lataa_raamattu()
 
     try:
@@ -330,16 +329,30 @@ else:
 
                 with st.spinner("Tarkistetaan viittauksia..."):
                     references_in_toc = etsi_viittaukset_tekstista(muokattu_sisallysluettelo, book_map, book_data_map)
-                    existing_verses_str = "\n".join(st.session_state.aineisto.get('jakeet', [])).lower()
+                    
+                    # --- KORJAUS V12.4: TARKEMPI TARKISTUSLOGIIKKA ---
+                    existing_verses_list = [v.lower() for v in st.session_state.aineisto.get('jakeet', [])]
                     missing = []
+                    
                     for ref in references_in_toc:
-                        found_in_source = True
+                        # Oletetaan, että viittaus on kokonaisuudessaan puuttuva, kunnes toisin todistetaan
+                        all_verses_in_ref_found = True
                         for verse_num in range(ref['start_verse'], ref['end_verse'] + 1):
                             ref_str_to_check = f'{ref["book_name"]} {ref["chapter"]}:{verse_num}'.lower()
-                            if ref_str_to_check not in existing_verses_str:
-                                found_in_source = False
+                            
+                            # Tarkistetaan, löytyykö yksittäinen jae listasta
+                            single_verse_found = False
+                            for verse_line in existing_verses_list:
+                                if verse_line.startswith(ref_str_to_check + " -"):
+                                    single_verse_found = True
+                                    break
+                            
+                            # Jos YKSIKÄÄN jae viittauksesta puuttuu, koko viittaus merkitään puuttuvaksi
+                            if not single_verse_found:
+                                all_verses_in_ref_found = False
                                 break
-                        if not found_in_source:
+                        
+                        if not all_verses_in_ref_found:
                             missing.append(ref)
                 
                 if not missing:
@@ -393,14 +406,12 @@ else:
                 st.rerun()
 
         with st.spinner("Järjestellään ja suodatetaan jakeita..."):
-            # --- KORJAUS: Käytetään käyttäjän valitsemaa mallia, ei hardkoodattua ---
             jae_kartta = jarjestele_jakeet_osioihin(aineisto['sisallysluettelo'], aineisto['jakeet'], aineisto['malli'], aineisto['noudata_ohjetta'])
             
             if jae_kartta:
                 suodatetut_jakeet = {jae for jakeet_listassa in jae_kartta.values() for jae in jakeet_listassa}
                 aineisto['suodatettu_jaemaara'] = len(suodatetut_jakeet)
             else:
-                # --- KORJAUS: Parempi palaute epäonnistumisesta ---
                 st.warning("Jakeiden automaattinen järjestely epäonnistui, mahdollisesti suuren jaemäärän vuoksi. Opetus kirjoitetaan käyttämällä koko lähdemateriaalia jokaiseen osioon, mikä voi hidastaa prosessia ja vaikuttaa tarkkuuteen.")
                 aineisto['suodatettu_jaemaara'] = len(aineisto['jakeet'])
 
@@ -412,7 +423,6 @@ else:
                 
                 for i, otsikko in enumerate(sisallysluettelo):
                     status.write(f"Kirjoitetaan osiota {i+1}/{osioiden_maara}: {otsikko}...")
-                    # Jos jae_kartta on None (järjestely epäonnistui), käytetään kaikkia jakeita
                     relevantit_jakeet = jae_kartta.get(otsikko, []) if jae_kartta else aineisto['jakeet']
                     osio_teksti = kirjoita_osio(aineisto['aihe'], otsikko, relevantit_jakeet, aineisto['lisamateriaali'], sanamaara_per_osio, aineisto['malli'], aineisto['noudata_ohjetta'])
                     if osio_teksti:
