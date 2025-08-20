@@ -66,7 +66,6 @@ def etsi_viittaukset_tekstista(text, book_map, book_data_map):
     all_references = []
 
     for part in parts:
-        # KORJAUS: Poistettu \b (word boundary) -rajoitteet, jotta tunnistus toimii myös sulkujen sisällä.
         pattern = re.compile(r'((?:\d\.\s)?[A-Za-zäöÄÖ\s\.]+?)\s+(\d+)(?::([\d\s,-]+))?', re.IGNORECASE)
         matches = pattern.findall(part)
 
@@ -232,7 +231,7 @@ st.set_page_config(page_title="Älykäs Raamattu-tutkija", layout="wide")
 if not st.session_state.password_correct:
     check_password()
 else:
-    st.title("📖 Älykäs Raamattu-tutkija v11.8")
+    st.title("📖 Älykäs Raamattu-tutkija v11.9")
     bible_data, book_map, book_name_map, book_data_map = lataa_raamattu()
 
     try:
@@ -314,19 +313,22 @@ else:
                 st.session_state.aineisto['sanamaara'] = sanamaara
 
                 with st.spinner("Tarkistetaan viittauksia..."):
-                    references = etsi_viittaukset_tekstista(muokattu_sisallysluettelo, book_map, book_data_map)
+                    references_in_toc = etsi_viittaukset_tekstista(muokattu_sisallysluettelo, book_map, book_data_map)
                     
-                    existing_refs_set = set()
-                    for verse_line in st.session_state.aineisto.get('jakeet', []):
-                        match = re.match(r'(.+? \d+:\d+)', verse_line)
-                        if match:
-                            existing_refs_set.add(match.group(1).lower())
-
+                    # KORJATTU JA YKSINKERTAISTETTU TARKISTUSLOGIIKKA
+                    existing_verses_str = "\n".join(st.session_state.aineisto.get('jakeet', [])).lower()
+                    
                     missing = []
-                    for ref in references:
-                        ref_start_str = f'{ref["book_name"]} {ref["chapter"]}:{ref["start_verse"]}'
-                        if ref_start_str.lower() not in existing_refs_set:
-                             missing.append(ref)
+                    for ref in references_in_toc:
+                        # Tarkistetaan jokainen jae alueelta erikseen
+                        found_in_source = True
+                        for verse_num in range(ref['start_verse'], ref['end_verse'] + 1):
+                            ref_str_to_check = f'{ref["book_name"]} {ref["chapter"]}:{verse_num}'.lower()
+                            if ref_str_to_check not in existing_verses_str:
+                                found_in_source = False
+                                break
+                        if not found_in_source:
+                            missing.append(ref)
                 
                 if not missing:
                     st.session_state.missing_verses = None
