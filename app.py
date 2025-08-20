@@ -23,10 +23,6 @@ st.markdown("""
 <style>
 .stMarkdown p, .stTextArea textarea, .stTextInput input, .stButton button { font-family: 'Times New Roman', Times, serif; }
 .stMarkdown p, .stTextArea textarea { font-size: 11pt; }
-/* Estetään "Press Ctrl+Enter to apply" -teksti */
-.stTextArea [data-testid="stMarkdownContainer"] p {
-    display: none;
-}
 </style>
 """, unsafe_allow_html=True)
 
@@ -185,7 +181,7 @@ else:
     if st.session_state.step == 'input':
         with st.sidebar:
             st.header("Asetukset")
-            aihe = st.text_area("Mistä aiheesta haluaisit laatia opetuksen?", "Jumalan kutsu", height=160)
+            aihe = st.text_area("Mistä aiheesta haluaisit laatia opetuksen?", "Jumalan kutsu", height=180)
             ladatut_tiedostot = st.file_uploader("Lataa lisämateriaalia", type=['txt', 'pdf', 'docx'], accept_multiple_files=True)
             st.subheader("Haun asetukset")
             jakeita_ennen = st.slider("Jakeita ennen osumaa:", 0, 10, 1)
@@ -310,6 +306,7 @@ Kirjoita noin [TÄYTÄ TAVOITESANAMÄÄRÄ TÄHÄN] sanan mittainen opetus. Käy
             st.session_state.step = 'input'
             st.session_state.aineisto = {}
             # MUUTOS: Turha ja ongelmia aiheuttanut st.rerun() on poistettu.
+
 
 
 
