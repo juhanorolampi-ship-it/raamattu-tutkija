@@ -61,16 +61,11 @@ def lataa_raamattu(tiedostonimi="bible.json"):
                 if key: book_map[key] = target
     return bible_data, book_map, book_name_map, book_data_map
 
-# ==============================================================================
-# KOKONAAN UUSITTU, ÄLYKKÄÄMPI VIITTAUSTEN TUNNISTUSFUNKTIO
-# ==============================================================================
 def etsi_viittaukset_tekstista(text, book_map):
-    # Erottaa viittaukset toisistaan, jos ne on erotettu puolipisteellä
     parts = text.replace('\n', ' ').split(';')
     all_references = []
 
     for part in parts:
-        # Regex, joka löytää kirjan nimen ja koko jaelitan (esim. "18:2-3, 26")
         pattern = re.compile(r'\b((?:\d\.\s)?[A-Za-zäöÄÖ\s\.]+?)\s+(\d+):([\d\s,-]+)\b', re.IGNORECASE)
         matches = pattern.findall(part)
 
@@ -82,24 +77,20 @@ def etsi_viittaukset_tekstista(text, book_map):
                 book_id, content = book_map[book_key]
                 book_proper_name = content['info'].get('name', book_name_raw.strip())
                 
-                # Jäsennellään jaelitan osat (erotellaan pilkulla)
                 verse_parts = verses_str.split(',')
                 for verse_part in verse_parts:
                     verse_part = verse_part.strip()
-                    if not verse_part:
-                        continue
+                    if not verse_part: continue
                     
                     start_verse, end_verse = 0, 0
                     if '-' in verse_part:
                         try:
                             start_verse, end_verse = map(int, verse_part.split('-'))
-                        except ValueError:
-                            continue
+                        except ValueError: continue
                     else:
                         try:
                             start_verse = end_verse = int(verse_part)
-                        except ValueError:
-                            continue
+                        except ValueError: continue
                     
                     all_references.append({
                         "book_id": book_id,
@@ -110,7 +101,6 @@ def etsi_viittaukset_tekstista(text, book_map):
                         "original_match": f"{book_proper_name} {chapter_str}:{start_verse}" + (f"-{end_verse}" if start_verse != end_verse else "")
                     })
     return all_references
-
 
 def hae_tarkka_viittaus(ref, book_data_map, book_name_map, ennen, jalkeen):
     found_verses = set()
@@ -129,7 +119,6 @@ def hae_tarkka_viittaus(ref, book_data_map, book_name_map, ennen, jalkeen):
     except KeyError:
         return []
     return list(found_verses)
-
 
 def lue_ladattu_tiedosto(uploaded_file):
     if uploaded_file is None: return ""
@@ -177,7 +166,6 @@ def etsi_ja_laajenna(bible_data, book_map, book_name_map, book_data_map, sana, k
                 laajennetut_jakeet.add(f"{oikea_nimi} {luku}:{i} - {jae_teksti}")
             except KeyError:
                 continue
-    
     return list(laajennetut_jakeet)
 
 def tee_api_kutsu(prompt, malli, noudata_perusohjetta=True):
@@ -237,7 +225,7 @@ st.set_page_config(page_title="Älykäs Raamattu-tutkija", layout="wide")
 if not st.session_state.password_correct:
     check_password()
 else:
-    st.title("📖 Älykäs Raamattu-tutkija v11.3")
+    st.title("📖 Älykäs Raamattu-tutkija v11.4")
     bible_data, book_map, book_name_map, book_data_map = lataa_raamattu()
 
     try:
@@ -327,21 +315,17 @@ else:
 
                 with st.spinner("Tarkistetaan viittauksia..."):
                     references = etsi_viittaukset_tekstista(muokattu_sisallysluettelo, book_map)
-                    existing_verses_text = "\n".join(st.session_state.aineisto.get('jakeet', []))
                     
-                    missing = []
-                    # Tehokkaampi tarkistus
                     existing_refs_set = set()
                     for verse_line in st.session_state.aineisto.get('jakeet', []):
                         match = re.match(r'(.+? \d+:\d+)', verse_line)
                         if match:
                             existing_refs_set.add(match.group(1))
 
+                    missing = []
                     for ref in references:
-                        # Tarkista sekä alku- että loppujae, jos kyseessä on alue
                         ref_start_str = f'{ref["book_name"]} {ref["chapter"]}:{ref["start_verse"]}'
-                        ref_end_str = f'{ref["book_name"]} {ref["chapter"]}:{ref["end_verse"]}'
-                        if ref_start_str not in existing_refs_set and ref_end_str not in existing_refs_set:
+                        if ref_start_str not in existing_refs_set:
                              missing.append(ref)
                 
                 if not missing:
@@ -390,6 +374,15 @@ else:
         aineisto = st.session_state.aineisto
         lopputulos = ""
         jae_kartta = None
+
+        # KORJAUS: "Uusi tutkimus" -nappi siirretty sivupalkkiin
+        with st.sidebar:
+            st.header("Valinnat")
+            if st.button("Uusi tutkimus"):
+                st.session_state.step = 'input'
+                st.session_state.aineisto = {}
+                st.session_state.missing_verses = None
+                st.rerun()
 
         with st.spinner("Järjestellään ja suodatetaan jakeita..."):
             jae_kartta = jarjestele_jakeet_osioihin(aineisto['sisallysluettelo'], aineisto['jakeet'], 'gemini-1.5-flash', aineisto['noudata_ohjetta'])
@@ -447,9 +440,3 @@ Kirjoita noin [TÄYTÄ TAVOITESANAMÄÄRÄ TÄHÄN] sanan mittainen opetus. Käy
         st.info(info_teksti)
         st.download_button("Lataa tiedostona (.txt)", data=lopputulos, file_name="lopputulos.txt")
         st.text_area("Lopputulos:", value=lopputulos, height=600)
-
-        if st.button("Uusi tutkimus"):
-            st.session_state.step = 'input'
-            st.session_state.aineisto = {}
-            st.session_state.missing_verses = None
-            st.rerun()
