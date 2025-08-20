@@ -79,49 +79,9 @@ def lue_ladattu_tiedosto(uploaded_file):
         st.error(f"Virhe tiedoston '{uploaded_file.name}' lukemisessa: {e}")
         return ""
 
-def tee_api_kutsu(prompt, malli, noudata_perusohjetta=True):
-    final_prompt = f"{TEOLOGINEN_PERUSOHJE}\n\n---\n\nKÄYTTÄJÄN PYYNTÖ:\n{prompt}" if noudata_perusohjetta else prompt
-    try:
-        model = genai.GenerativeModel(malli)
-        response = model.generate_content(final_prompt)
-        time.sleep(1) 
-        return response.text
-    except Exception as e:
-        st.error(f"API-VIRHE: {e}")
-        return None
-
-# --- KORJATTU: PUUTTUVA FUNKTIO LISÄTTY ---
-def hae_konteksti_alue(book_id, luku_nro, jae_nro, book_data_map, malli):
-    """Pyytää AI:ta tunnistamaan loogisen asiayhteyden."""
-    try:
-        koko_luku_teksti = ""
-        luku_data = book_data_map[book_id]['chapter'][str(luku_nro)]['verse']
-        for jae, data in sorted(luku_data.items(), key=lambda item: int(item[0])):
-            koko_luku_teksti += f"{jae}. {data['text']} "
-        
-        siemen_jae_teksti = luku_data[str(jae_nro)]['text']
-
-        prompt = f"""
-        Annan sinulle yhden Raamatun jakeen ja koko luvun, josta se on peräisin. Tehtäväsi on tunnistaa ja palauttaa se yhtenäinen tekstikatkelma (perikoop-jakso), johon annettu jae kuuluu.
-        
-        KOKO LUKU:
-        {koko_luku_teksti}
-        
-        ANNETTU JAE, JONKA KONTEKSTI TULEE LÖYTÄÄ:
-        Jae {jae_nro}: "{siemen_jae_teksti}"
-        
-        Vastaa palauttamalla AINOASTAAN ne jakeet (jaenumero ja teksti), jotka muodostavat tämän loogisen asiayhteyden. Älä selitä mitään.
-        Esimerkkivastaus:
-        1. Alussa loi Jumala taivaan ja maan.
-        2. Ja maa oli autio ja tyhjä...
-        """
-        return tee_api_kutsu(prompt, malli, noudata_perusohjetta=False)
-    except Exception as e:
-        st.warning(f"Kontekstin analysointi epäonnistui: {e}")
-        return None
-
-def etsi_ja_laajenna_alykkaasti(bible_data, book_map, book_name_map, book_data_map, sana, kirja, malli):
-    siemen_jakeet_refs, sana_lower = [], sana.lower().replace('*', '.*')
+# --- PALAUTETTU NOPEA, MEKAANINEN HAKUFUNKTIO ---
+def etsi_ja_laajenna(bible_data, book_map, book_name_map, book_data_map, sana, kirja, ennen, jalkeen):
+    siemen_jakeet, sana_lower = [], sana.lower().replace('*', '.*')
     try: pattern = re.compile(sana_lower)
     except re.error: return []
     key_to_find = kirja.lower().replace('.', '').replace(' ', '')
@@ -133,22 +93,29 @@ def etsi_ja_laajenna_alykkaasti(bible_data, book_map, book_name_map, book_data_m
     for luku_str, luku_data in book_content.get('chapter', {}).items():
         for jae_str, jae_data in luku_data.get('verse', {}).items():
             if pattern.search(jae_data.get('text', '').lower()):
-                siemen_jakeet_refs.append((book_id_str, int(luku_str), int(jae_str), oikea_nimi))
+                siemen_jakeet.append((book_id_str, int(luku_str), int(jae_str)))
 
-    konteksti_jakeet = set()
-    for book_id, luku, jae, kirjan_nimi in siemen_jakeet_refs:
-        konteksti_str = hae_konteksti_alue(book_id, luku, jae, book_data_map, malli)
-        if konteksti_str:
-            lines = konteksti_str.strip().split('\n')
-            for line in lines:
-                match = re.match(r'^\s*(\d+)\.?\s*(.*)', line)
-                if match:
-                    jae_nro, jae_teksti = match.groups()
-                    konteksti_jakeet.add(f"{kirjan_nimi} {luku}:{jae_nro} - {jae_teksti.strip()}")
-                else:
-                    konteksti_jakeet.add(f"{kirjan_nimi} {luku}:{jae} (konteksti) - {line.strip()}")
+    laajennetut_jakeet = set()
+    for book_id, luku, jae_nro in siemen_jakeet:
+        for i in range(jae_nro - ennen, jae_nro + jalkeen + 1):
+            try:
+                jae_teksti = book_data_map[book_id]['chapter'][str(luku)]['verse'][str(i)]['text']
+                laajennetut_jakeet.add(f"{oikea_nimi} {luku}:{i} - {jae_teksti}")
+            except KeyError:
+                continue
     
-    return list(konteksti_jakeet)
+    return list(laajennetut_jakeet)
+
+def tee_api_kutsu(prompt, malli, noudata_perusohjetta=True):
+    final_prompt = f"{TEOLOGINEN_PERUSOHJE}\n\n---\n\nKÄYTTÄJÄN PYYNTÖ:\n{prompt}" if noudata_perusohjetta else prompt
+    try:
+        model = genai.GenerativeModel(malli)
+        response = model.generate_content(final_prompt)
+        time.sleep(1) 
+        return response.text
+    except Exception as e:
+        st.error(f"API-VIRHE: {e}")
+        return None
 
 def luo_sisallysluettelo(aihe, malli, noudata_perusohjetta):
     prompt = f"Olet teologi. Luo yksityiskohtainen sisällysluettelo laajalle opetukselle aiheesta '{aihe}'. Rakenna runko, jossa on johdanto, 3-5 pääkohtaa ja jokaiseen 2-4 alakohtaa, sekä yhteenveto. Vastaa AINOASTAAN numeroituna listana."
@@ -192,7 +159,7 @@ st.set_page_config(page_title="Älykäs Raamattu-tutkija", layout="wide")
 if not st.session_state.password_correct:
     check_password()
 else:
-    st.title("📖 Älykäs Raamattu-tutkija v10.1")
+    st.title("📖 Älykäs Raamattu-tutkija v10.2 (Nopea haku)")
     bible_data, book_map, book_name_map, book_data_map = lataa_raamattu()
 
     try:
@@ -208,14 +175,22 @@ else:
             st.header("Asetukset")
             aihe = st.text_area("Mistä aiheesta?", "Jumalan kutsu", height=100)
             ladatut_tiedostot = st.file_uploader("Lataa lisämateriaalia", type=['txt', 'pdf', 'docx'], accept_multiple_files=True)
+            
+            st.subheader("Haun asetukset")
+            jakeita_ennen = st.slider("Jakeita ennen osumaa:", 0, 10, 2, help="Kuinka monta jaetta otetaan mukaan ennen hakusanalla löytynyttä jaetta.")
+            jakeita_jalkeen = st.slider("Jakeita osuman jälkeen:", 0, 10, 4, help="Kuinka monta jaetta otetaan mukaan hakusanalla löytyneen jakeen jälkeen.")
+
+            st.subheader("Tekoälyn asetukset")
             malli_valinta_ui = st.selectbox("Valitse Gemini-malli:", ('gemini-1.5-pro', 'gemini-1.5-flash'))
             noudata_perusohjetta_luodessa = st.checkbox("Noudata teologista perusohjetta", value=True)
             
             if st.button("Aloita tutkimus", type="primary"):
                 with st.spinner("Kerätään aineistoa..."):
-                    st.session_state.aineisto['aihe'] = aihe
-                    st.session_state.aineisto['malli'] = malli_valinta_ui
-                    st.session_state.aineisto['noudata_ohjetta'] = noudata_perusohjetta_luodessa
+                    st.session_state.aineisto = {
+                        'aihe': aihe,
+                        'malli': malli_valinta_ui,
+                        'noudata_ohjetta': noudata_perusohjetta_luodessa
+                    }
                     
                     lisamateriaalit = [lue_ladattu_tiedosto(tiedosto) for tiedosto in ladatut_tiedostot] if ladatut_tiedostot else []
                     st.session_state.aineisto['lisamateriaali'] = "\n\n---\n\n".join(lisamateriaalit)
@@ -228,7 +203,7 @@ else:
                     kaikki_loydetyt_jakeet = set()
                     for kirja in suunnitelma.get("kirjat", []):
                         for sana in suunnitelma.get("hakusanat", []):
-                            for jae in etsi_ja_laajenna_alykkaasti(bible_data, book_map, book_name_map, book_data_map, sana, kirja, 'gemini-1.5-flash'):
+                            for jae in etsi_ja_laajenna(bible_data, book_map, book_name_map, book_data_map, sana, kirja, jakeita_ennen, jakeita_jalkeen):
                                 kaikki_loydetyt_jakeet.add(jae)
                     st.session_state.aineisto['jakeet'] = sorted(list(kaikki_loydetyt_jakeet))
 
@@ -250,7 +225,7 @@ else:
 
         with st.sidebar:
             st.header("Luo lopputulos")
-            toimintatapa = st.radio("Mitä haluat tuottaa?", ("Valmis opetus", "Tutkimusraportti"))
+            toimintatapa = st.radio("Mitä haluat tuottaa?", ("Valmis opetus (Optimoitu)", "Tutkimusraportti (Jatkojalostukseen)"))
             sanamaara = st.number_input("Tavoitesanamäärä (vain opetukselle)", min_value=300, max_value=20000, value=4000, step=100)
             
             if st.button("Luo lopputulos", type="primary"):
@@ -264,7 +239,7 @@ else:
         aineisto = st.session_state.aineisto
         lopputulos = ""
 
-        if aineisto['toimintatapa'] == "Valmis opetus":
+        if aineisto['toimintatapa'] == "Valmis opetus (Optimoitu)":
             with st.spinner("Kirjoitetaan opetusta..."):
                 sisallysluettelo = [rivi.strip() for rivi in aineisto['sisallysluettelo'].split('\n') if rivi.strip()]
                 jae_kartta = jarjestele_jakeet_osioihin(aineisto['sisallysluettelo'], aineisto['jakeet'], 'gemini-1.5-flash', aineisto['noudata_ohjetta'])
@@ -280,7 +255,7 @@ else:
                         koko_opetus.append(f"### {otsikko}\n\n{osio_teksti}\n\n")
                 lopputulos = "".join(koko_opetus)
 
-        elif aineisto['toimintatapa'] == "Tutkimusraportti":
+        elif aineisto['toimintatapa'] == "Tutkimusraportti (Jatkojalostukseen)":
             with st.spinner("Kootaan raporttia..."):
                 komentopohja = f"""
 Hei, tässä on app.py-tutkimusapurini tuottama raportti. Tehtäväsi on kirjoittaa tämän aineiston pohjalta laadukas, syvällinen ja kielellisesti rikas opetus.
