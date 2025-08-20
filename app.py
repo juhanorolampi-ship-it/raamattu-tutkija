@@ -235,7 +235,7 @@ else:
                 
                 # --- UUSI LISÄYS: Luodaan valmis komentopohja ---
                 komentopohja = f"""
-Hei, tässä on app.py-tutkimusapurini tuottama raportti. Tehtäväni on kirjoittaa tämän aineiston pohjalta laadukas, syvällinen ja kielellisesti rikas opetus.
+Hei, tässä on app.py-tutkimusapurini tuottama raportti. Tehtäväsi on kirjoittaa tämän aineiston pohjalta laadukas, syvällinen ja kielellisesti rikas opetus.
 
 ---
 AIHE:
@@ -296,3 +296,4 @@ Kirjoita noin [TÄYTÄ TAVOITESANAMÄÄRÄ TÄHÄN] sanan mittainen opetus. Käy
         
         if st.session_state.editori != st.session_state.opetus_teksti:
             st.session_state.opetus_teksti = st.session_state.editori
+
