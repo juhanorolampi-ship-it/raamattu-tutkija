@@ -65,16 +65,12 @@ def lataa_raamattu(tiedostonimi="bible.json"):
 # VIITTAUSTEN TUNNISTUSFUNKTIO (v5 - Vankempi korjaus)
 # ==============================================================================
 def etsi_viittaukset_tekstista(text, book_map, book_data_map):
-    # Poistetaan sulkeet ja erikoismerkit numeroiden ympäriltä selkeyden vuoksi
     cleaned_text = re.sub(r'[()\[\]]', ' ', text)
     parts = cleaned_text.replace('\n', ' ').split(';')
     all_references = []
-
-    # Järjestetään kirja-avaimet pituuden mukaan laskevasti
     sorted_book_keys = sorted(book_map.keys(), key=len, reverse=True)
 
     for part in parts:
-        # Regex etsii nyt kirjaa, lukua ja mahdollisia jakeita
         pattern = re.compile(r'((?:\d\.\s)?[A-Za-zäöÄÖ\s\.]+?)\s+(\d+)(?::([\d\s,-]+))?', re.IGNORECASE)
         matches = pattern.findall(part)
 
@@ -82,17 +78,8 @@ def etsi_viittaukset_tekstista(text, book_map, book_data_map):
             book_name_raw, chapter_str, verses_str = match
             book_key_raw = book_name_raw.strip().lower().replace('.', '').replace(' ', '')
             
-            # --- UUSI, VANKEMPI SUODATUS ---
-            # 1. Ohita täysin tyhjät osumat (esim. pelkkä piste).
-            if not book_key_raw:
-                continue
-
-            # 2. Ohita osumat, jotka EIVÄT SISÄLLÄ YHTÄÄN KIRJAINTA.
-            # Tämä suodattaa tehokkaasti pois kaikki listanumerot (esim. "1.", "2.2.", "3.1.4")
-            # mutta sallii numeroidut kirjat (esim. "1. Moos." -> "1moos").
-            if not re.search(r'[a-zäö]', book_key_raw):
+            if not book_key_raw or not re.search(r'[a-zäö]', book_key_raw):
                  continue
-            # ------------------------------------
 
             found_key = None
             for key in sorted_book_keys:
@@ -104,7 +91,7 @@ def etsi_viittaukset_tekstista(text, book_map, book_data_map):
                 book_id, content = book_map[found_key]
                 book_proper_name = content['info'].get('name', book_name_raw.strip())
                 
-                if verses_str: # Jos jakeet on määritelty
+                if verses_str:
                     verse_parts = verses_str.split(',')
                     for verse_part in verse_parts:
                         verse_part = verse_part.strip()
@@ -123,7 +110,7 @@ def etsi_viittaukset_tekstista(text, book_map, book_data_map):
                             "start_verse": start_verse, "end_verse": end_verse,
                             "original_match": f"{book_proper_name} {chapter_str}:{start_verse}" + (f"-{end_verse}" if start_verse != end_verse else "")
                         })
-                else: # Jos vain luku on määritelty
+                else:
                     try:
                         last_verse_num = len(book_data_map[book_id]['chapter'][chapter_str]['verse'])
                         all_references.append({
@@ -225,7 +212,7 @@ def jarjestele_jakeet_osioihin(sisallysluettelo, jakeet, malli, noudata_perusohj
         cleaned_response = vastaus_str.strip().replace("```json", "").replace("```", "")
         return json.loads(cleaned_response)
     except (json.JSONDecodeError, AttributeError):
-        st.warning("Jakeiden automaattinen järjestely epäonnistui.")
+        # Tässä palautetaan None, jos järjestely epäonnistuu
         return None
 
 def kirjoita_osio(aihe, osion_otsikko, jakeet, lisamateriaali, sanamaara_osio, malli, noudata_perusohjetta):
@@ -259,7 +246,7 @@ st.set_page_config(page_title="Älykäs Raamattu-tutkija", layout="wide")
 if not st.session_state.password_correct:
     check_password()
 else:
-    st.title("📖 Älykäs Raamattu-tutkija v12.2")
+    st.title("📖 Älykäs Raamattu-tutkija v12.3")
     bible_data, book_map, book_name_map, book_data_map = lataa_raamattu()
 
     try:
@@ -281,7 +268,7 @@ else:
             jakeita_ennen = st.slider("Jakeita ennen osumaa:", 0, 10, 1)
             jakeita_jalkeen = st.slider("Jakeita osuman jälkeen:", 0, 10, 2)
             st.subheader("Tekoälyn asetukset")
-            malli_valinta_ui = st.selectbox("Valitse Gemini-malli:", ('gemini-1.5-flash', 'gemini-1.5-pro'))
+            malli_valinta_ui = st.selectbox("Valitse Gemini-malli:", ('gemini-1.5-pro', 'gemini-1.5-flash'))
             noudata_perusohjetta_luodessa = st.checkbox("Noudata teologista perusohjetta", value=True)
             
             if st.button("Aloita tutkimus", type="primary"):
@@ -328,6 +315,7 @@ else:
         
         st.subheader("Kerätty lähdemateriaali")
         with st.expander(f"Näytä {len(st.session_state.aineisto.get('jakeet', []))} löydettyä jaetta"):
+            st.markdown("_Vinkki: Jos annoit yksityiskohtaisen aiheen, monet viittaukset ovat todennäköisesti jo tässä listassa._")
             st.text_area("", value="\n".join(st.session_state.aineisto.get('jakeet', [])), height=300, key="jakeet_naytto")
 
         with st.sidebar:
@@ -342,9 +330,7 @@ else:
 
                 with st.spinner("Tarkistetaan viittauksia..."):
                     references_in_toc = etsi_viittaukset_tekstista(muokattu_sisallysluettelo, book_map, book_data_map)
-                    
                     existing_verses_str = "\n".join(st.session_state.aineisto.get('jakeet', [])).lower()
-                    
                     missing = []
                     for ref in references_in_toc:
                         found_in_source = True
@@ -366,7 +352,6 @@ else:
 
         if st.session_state.missing_verses:
             st.warning("⚠️ **Huomio!** Seuraavia sisällysluettelossa mainittuja viittauksia ei löytynyt kerätystä lähdemateriaalista:")
-            
             missing_refs_str = [f'- {ref["original_match"]}' for ref in st.session_state.missing_verses]
             st.markdown("\n".join(missing_refs_str))
             st.write("Haluatko hakea nämä puuttuvat jakeet ja lisätä ne lähdemateriaaliin ennen jatkamista?")
@@ -408,11 +393,15 @@ else:
                 st.rerun()
 
         with st.spinner("Järjestellään ja suodatetaan jakeita..."):
-            jae_kartta = jarjestele_jakeet_osioihin(aineisto['sisallysluettelo'], aineisto['jakeet'], 'gemini-1.5-flash', aineisto['noudata_ohjetta'])
+            # --- KORJAUS: Käytetään käyttäjän valitsemaa mallia, ei hardkoodattua ---
+            jae_kartta = jarjestele_jakeet_osioihin(aineisto['sisallysluettelo'], aineisto['jakeet'], aineisto['malli'], aineisto['noudata_ohjetta'])
+            
             if jae_kartta:
                 suodatetut_jakeet = {jae for jakeet_listassa in jae_kartta.values() for jae in jakeet_listassa}
                 aineisto['suodatettu_jaemaara'] = len(suodatetut_jakeet)
             else:
+                # --- KORJAUS: Parempi palaute epäonnistumisesta ---
+                st.warning("Jakeiden automaattinen järjestely epäonnistui, mahdollisesti suuren jaemäärän vuoksi. Opetus kirjoitetaan käyttämällä koko lähdemateriaalia jokaiseen osioon, mikä voi hidastaa prosessia ja vaikuttaa tarkkuuteen.")
                 aineisto['suodatettu_jaemaara'] = len(aineisto['jakeet'])
 
         if aineisto['toimintatapa'] == "Valmis opetus (Optimoitu)":
@@ -423,6 +412,7 @@ else:
                 
                 for i, otsikko in enumerate(sisallysluettelo):
                     status.write(f"Kirjoitetaan osiota {i+1}/{osioiden_maara}: {otsikko}...")
+                    # Jos jae_kartta on None (järjestely epäonnistui), käytetään kaikkia jakeita
                     relevantit_jakeet = jae_kartta.get(otsikko, []) if jae_kartta else aineisto['jakeet']
                     osio_teksti = kirjoita_osio(aineisto['aihe'], otsikko, relevantit_jakeet, aineisto['lisamateriaali'], sanamaara_per_osio, aineisto['malli'], aineisto['noudata_ohjetta'])
                     if osio_teksti:
