@@ -27,7 +27,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- ISTUNNON TILAN ALUSTUS ---
-# 'step' ohjaa, mikä näkymä näytetään: 'input', 'review', 'output'
 if 'step' not in st.session_state:
     st.session_state.step = 'input'
 if 'password_correct' not in st.session_state:
@@ -35,10 +34,9 @@ if 'password_correct' not in st.session_state:
 if 'aineisto' not in st.session_state:
     st.session_state.aineisto = {}
 
-# --- TAUSTA-FUNKTIOT (pysyvät samoina) ---
+# --- TAUSTA-FUNKTIOT ---
 @st.cache_data
 def lataa_raamattu(tiedostonimi="bible.json"):
-    # ... (ei muutoksia tähän)
     try:
         with open(tiedostonimi, "r", encoding="utf-8") as f:
             bible_data = json.load(f)
@@ -59,7 +57,6 @@ def lataa_raamattu(tiedostonimi="bible.json"):
     return bible_data, book_map, book_name_map, book_data_map
 
 def lue_ladattu_tiedosto(uploaded_file):
-    # ... (ei muutoksia tähän)
     if uploaded_file is None: return ""
     try:
         file_extension = uploaded_file.name.split('.')[-1].lower()
@@ -82,19 +79,62 @@ def lue_ladattu_tiedosto(uploaded_file):
         st.error(f"Virhe tiedoston '{uploaded_file.name}' lukemisessa: {e}")
         return ""
 
+def tee_api_kutsu(prompt, malli, noudata_perusohjetta=True):
+    final_prompt = f"{TEOLOGINEN_PERUSOHJE}\n\n---\n\nKÄYTTÄJÄN PYYNTÖ:\n{prompt}" if noudata_perusohjetta else prompt
+    try:
+        model = genai.GenerativeModel(malli)
+        response = model.generate_content(final_prompt)
+        time.sleep(1) 
+        return response.text
+    except Exception as e:
+        st.error(f"API-VIRHE: {e}")
+        return None
+
+# --- KORJATTU: PUUTTUVA FUNKTIO LISÄTTY ---
+def hae_konteksti_alue(book_id, luku_nro, jae_nro, book_data_map, malli):
+    """Pyytää AI:ta tunnistamaan loogisen asiayhteyden."""
+    try:
+        koko_luku_teksti = ""
+        luku_data = book_data_map[book_id]['chapter'][str(luku_nro)]['verse']
+        for jae, data in sorted(luku_data.items(), key=lambda item: int(item[0])):
+            koko_luku_teksti += f"{jae}. {data['text']} "
+        
+        siemen_jae_teksti = luku_data[str(jae_nro)]['text']
+
+        prompt = f"""
+        Annan sinulle yhden Raamatun jakeen ja koko luvun, josta se on peräisin. Tehtäväsi on tunnistaa ja palauttaa se yhtenäinen tekstikatkelma (perikoop-jakso), johon annettu jae kuuluu.
+        
+        KOKO LUKU:
+        {koko_luku_teksti}
+        
+        ANNETTU JAE, JONKA KONTEKSTI TULEE LÖYTÄÄ:
+        Jae {jae_nro}: "{siemen_jae_teksti}"
+        
+        Vastaa palauttamalla AINOASTAAN ne jakeet (jaenumero ja teksti), jotka muodostavat tämän loogisen asiayhteyden. Älä selitä mitään.
+        Esimerkkivastaus:
+        1. Alussa loi Jumala taivaan ja maan.
+        2. Ja maa oli autio ja tyhjä...
+        """
+        return tee_api_kutsu(prompt, malli, noudata_perusohjetta=False)
+    except Exception as e:
+        st.warning(f"Kontekstin analysointi epäonnistui: {e}")
+        return None
+
 def etsi_ja_laajenna_alykkaasti(bible_data, book_map, book_name_map, book_data_map, sana, kirja, malli):
-    # ... (ei muutoksia tähän)
     siemen_jakeet_refs, sana_lower = [], sana.lower().replace('*', '.*')
     try: pattern = re.compile(sana_lower)
     except re.error: return []
     key_to_find = kirja.lower().replace('.', '').replace(' ', '')
     if key_to_find not in book_map: return []
+    
     book_id_str, book_content = book_map[key_to_find]
     oikea_nimi = book_name_map.get(book_id_str, f"Kirja {book_id_str}")
+    
     for luku_str, luku_data in book_content.get('chapter', {}).items():
         for jae_str, jae_data in luku_data.get('verse', {}).items():
             if pattern.search(jae_data.get('text', '').lower()):
                 siemen_jakeet_refs.append((book_id_str, int(luku_str), int(jae_str), oikea_nimi))
+
     konteksti_jakeet = set()
     for book_id, luku, jae, kirjan_nimi in siemen_jakeet_refs:
         konteksti_str = hae_konteksti_alue(book_id, luku, jae, book_data_map, malli)
@@ -107,28 +147,14 @@ def etsi_ja_laajenna_alykkaasti(bible_data, book_map, book_name_map, book_data_m
                     konteksti_jakeet.add(f"{kirjan_nimi} {luku}:{jae_nro} - {jae_teksti.strip()}")
                 else:
                     konteksti_jakeet.add(f"{kirjan_nimi} {luku}:{jae} (konteksti) - {line.strip()}")
+    
     return list(konteksti_jakeet)
 
-# ... (kaikki muut taustafunktiot pysyvät samoina) ...
-def tee_api_kutsu(prompt, malli, noudata_perusohjetta=True):
-    # ...
-    final_prompt = f"{TEOLOGINEN_PERUSOHJE}\n\n---\n\nKÄYTTÄJÄN PYYNTÖ:\n{prompt}" if noudata_perusohjetta else prompt
-    try:
-        model = genai.GenerativeModel(malli)
-        response = model.generate_content(final_prompt)
-        time.sleep(1) 
-        return response.text
-    except Exception as e:
-        st.error(f"API-VIRHE: {e}")
-        return None
-
 def luo_sisallysluettelo(aihe, malli, noudata_perusohjetta):
-    # ...
     prompt = f"Olet teologi. Luo yksityiskohtainen sisällysluettelo laajalle opetukselle aiheesta '{aihe}'. Rakenna runko, jossa on johdanto, 3-5 pääkohtaa ja jokaiseen 2-4 alakohtaa, sekä yhteenveto. Vastaa AINOASTAAN numeroituna listana."
     return tee_api_kutsu(prompt, malli, noudata_perusohjetta)
 
 def jarjestele_jakeet_osioihin(sisallysluettelo, jakeet, malli, noudata_perusohjetta):
-    # ...
     jae_teksti = "\n".join(jakeet)
     prompt = f"Järjestele annetut Raamatun jakeet opetuksen sisällysluettelon mukaisiin osioihin. SISÄLLYSLUETTELO:\n{sisallysluettelo}\n\nLÖYDETYT JAKEET:\n{jae_teksti}\n\nVastaa AINOASTAAN JSON-muodossa. Avaimena on sisällysluettelon TÄSMÄLLINEN otsikko ja arvona lista siihen sopivista jakeista."
     vastaus_str = tee_api_kutsu(prompt, malli, noudata_perusohjetta)
@@ -140,14 +166,12 @@ def jarjestele_jakeet_osioihin(sisallysluettelo, jakeet, malli, noudata_perusohj
         return None
 
 def kirjoita_osio(aihe, osion_otsikko, jakeet, lisamateriaali, sanamaara_osio, malli, noudata_perusohjetta):
-    # ...
     jae_teksti = "\n".join(jakeet) if jakeet else "Ei Raamattu-jakeita tähän osioon."
     lisamateriaali_osio = f"\n\n--- KÄYTTÄJÄN ANTAMA LISÄMATERIAALI ---\n{lisamateriaali}" if lisamateriaali else ""
     prompt = f"Olet teologi. Kirjoita yksi kappale laajasta opetuksesta pääaiheella '{aihe}'. Kappaleen otsikko on: '{osion_otsikko}'. Kirjoita noin {sanamaara_osio} sanan osuus. ÄLÄ TOISTA OTSIKKOA. Aloita suoraan leipätekstillä. Käytä AINOASTAAN annettua KR33/38-lähdemateriaalia ja käyttäjän antamaa lisämateriaalia. Lainaa keskeiset jakeet sanatarkasti. LÄHDEMATERIAALI:\n{jae_teksti}{lisamateriaali_osio}"
     return tee_api_kutsu(prompt, malli, noudata_perusohjetta)
 
 def check_password():
-    # ...
     st.header("🔑 Kirjaudu sisään")
     password = st.text_input("Syötä salasana", type="password")
     try:
@@ -168,7 +192,7 @@ st.set_page_config(page_title="Älykäs Raamattu-tutkija", layout="wide")
 if not st.session_state.password_correct:
     check_password()
 else:
-    st.title("📖 Älykäs Raamattu-tutkija v10.0 (Interaktiivinen)")
+    st.title("📖 Älykäs Raamattu-tutkija v10.1")
     bible_data, book_map, book_name_map, book_data_map = lataa_raamattu()
 
     try:
@@ -177,7 +201,6 @@ else:
         st.error("API-avainta ei löydy. Varmista, että olet asettanut GEMINI_API_KEY -salaisuuden Streamlitin asetuksissa.")
         st.stop()
     
-    # VAIHE 1: ALOITUSNÄKYMÄ
     if st.session_state.step == 'input':
         st.header("1. Aloita tutkimus")
         with st.sidebar:
@@ -215,10 +238,8 @@ else:
                     st.session_state.step = 'review'
                     st.rerun()
 
-    # VAIHE 2: SISÄLLYSLUETTELON TARKASTUS
     elif st.session_state.step == 'review':
         st.header("2. Tarkista ja muokkaa sisällysluetteloa")
-        
         st.info("Tekoäly on luonut ehdotuksen sisällysluetteloksi ja kerännyt lähdemateriaalin. Voit nyt muokata sisällysluetteloa ennen lopullisen tekstin luomista.")
         
         muokattu_sisallysluettelo = st.text_area("Sisällysluettelo:", value=st.session_state.aineisto.get('sisallysluettelo', ''), height=300)
@@ -239,7 +260,6 @@ else:
                 st.session_state.step = 'output'
                 st.rerun()
 
-    # VAIHE 3: LOPPUTULOKSEN LUONTI JA NÄYTTÖ
     elif st.session_state.step == 'output':
         aineisto = st.session_state.aineisto
         lopputulos = ""
