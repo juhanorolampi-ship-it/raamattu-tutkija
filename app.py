@@ -66,7 +66,8 @@ def etsi_viittaukset_tekstista(text, book_map, book_data_map):
     all_references = []
 
     for part in parts:
-        pattern = re.compile(r'\b((?:\d\.\s)?[A-Za-zäöÄÖ\s\.]+?)\s+(\d+)(?::([\d\s,-]+))?\b', re.IGNORECASE)
+        # KORJAUS: Poistettu \b (word boundary) -rajoitteet, jotta tunnistus toimii myös sulkujen sisällä.
+        pattern = re.compile(r'((?:\d\.\s)?[A-Za-zäöÄÖ\s\.]+?)\s+(\d+)(?::([\d\s,-]+))?', re.IGNORECASE)
         matches = pattern.findall(part)
 
         for match in matches:
@@ -231,7 +232,7 @@ st.set_page_config(page_title="Älykäs Raamattu-tutkija", layout="wide")
 if not st.session_state.password_correct:
     check_password()
 else:
-    st.title("📖 Älykäs Raamattu-tutkija v11.7")
+    st.title("📖 Älykäs Raamattu-tutkija v11.8")
     bible_data, book_map, book_name_map, book_data_map = lataa_raamattu()
 
     try:
@@ -319,13 +320,11 @@ else:
                     for verse_line in st.session_state.aineisto.get('jakeet', []):
                         match = re.match(r'(.+? \d+:\d+)', verse_line)
                         if match:
-                            # KORJAUS: Varmistetaan vertailun luotettavuus (case-insensitive)
                             existing_refs_set.add(match.group(1).lower())
 
                     missing = []
                     for ref in references:
                         ref_start_str = f'{ref["book_name"]} {ref["chapter"]}:{ref["start_verse"]}'
-                        # KORJAUS: Varmistetaan vertailun luotettavuus (case-insensitive)
                         if ref_start_str.lower() not in existing_refs_set:
                              missing.append(ref)
                 
