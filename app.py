@@ -33,6 +33,9 @@ if 'password_correct' not in st.session_state:
     st.session_state.password_correct = False
 if 'aineisto' not in st.session_state:
     st.session_state.aineisto = {}
+if 'login_toast_shown' not in st.session_state:
+    st.session_state.login_toast_shown = False
+
 
 # --- TAUSTA-FUNKTIOT ---
 @st.cache_data
@@ -79,7 +82,6 @@ def lue_ladattu_tiedosto(uploaded_file):
         st.error(f"Virhe tiedoston '{uploaded_file.name}' lukemisessa: {e}")
         return ""
 
-# --- PALAUTETTU NOPEA, MEKAANINEN HAKUFUNKTIO ---
 def etsi_ja_laajenna(bible_data, book_map, book_name_map, book_data_map, sana, kirja, ennen, jalkeen):
     siemen_jakeet, sana_lower = [], sana.lower().replace('*', '.*')
     try: pattern = re.compile(sana_lower)
@@ -148,8 +150,12 @@ def check_password():
         is_public_env = False
     if is_public_env:
         if st.button("Kirjaudu"):
-            if password == correct_password: st.session_state.password_correct = True; st.rerun()
-            else: st.error("Salasana on virheellinen.")
+            if password == correct_password: 
+                st.session_state.password_correct = True
+                st.session_state.login_toast_shown = False # Nollataan, jotta ilmoitus näkyy joka kerta
+                st.rerun()
+            else:
+                st.error("Salasana on virheellinen.")
     else: 
         st.session_state.password_correct = True
         
@@ -159,7 +165,7 @@ st.set_page_config(page_title="Älykäs Raamattu-tutkija", layout="wide")
 if not st.session_state.password_correct:
     check_password()
 else:
-    st.title("📖 Älykäs Raamattu-tutkija v10.2 (Nopea haku)")
+    st.title("📖 Älykäs Raamattu-tutkija v10.3")
     bible_data, book_map, book_name_map, book_data_map = lataa_raamattu()
 
     try:
@@ -168,20 +174,22 @@ else:
         st.error("API-avainta ei löydy. Varmista, että olet asettanut GEMINI_API_KEY -salaisuuden Streamlitin asetuksissa.")
         st.stop()
     
-    if st.session_state.step == 'input':
-        st.header("1. Aloita tutkimus")
-        with st.sidebar:
-            st.success("Kirjautuminen onnistui!")
-            st.header("Asetukset")
-            aihe = st.text_area("Mistä aiheesta?", "Jumalan kutsu", height=100)
-            ladatut_tiedostot = st.file_uploader("Lataa lisämateriaalia", type=['txt', 'pdf', 'docx'], accept_multiple_files=True)
-            
-            st.subheader("Haun asetukset")
-            jakeita_ennen = st.slider("Jakeita ennen osumaa:", 0, 10, 2, help="Kuinka monta jaetta otetaan mukaan ennen hakusanalla löytynyttä jaetta.")
-            jakeita_jalkeen = st.slider("Jakeita osuman jälkeen:", 0, 10, 4, help="Kuinka monta jaetta otetaan mukaan hakusanalla löytyneen jakeen jälkeen.")
+    # MUUTOS: "Kirjautuminen onnistui" -ilmoitus näytetään vain kerran
+    if not st.session_state.login_toast_shown:
+        st.toast("Kirjautuminen onnistui!", icon="🎉")
+        st.session_state.login_toast_shown = True
 
+    # VAIHE 1: ALOITUSNÄKYMÄ
+    if st.session_state.step == 'input':
+        with st.sidebar:
+            st.header("Asetukset")
+            aihe = st.text_area("Mistä aiheesta?", "Jumalan kutsu", height=150) # MUUTOS: Kenttä on korkeampi
+            ladatut_tiedostot = st.file_uploader("Lataa lisämateriaalia", type=['txt', 'pdf', 'docx'], accept_multiple_files=True)
+            st.subheader("Haun asetukset")
+            jakeita_ennen = st.slider("Jakeita ennen osumaa:", 0, 10, 1) # MUUTOS: Oletusarvo
+            jakeita_jalkeen = st.slider("Jakeita osuman jälkeen:", 0, 10, 2) # MUUTOS: Oletusarvo
             st.subheader("Tekoälyn asetukset")
-            malli_valinta_ui = st.selectbox("Valitse Gemini-malli:", ('gemini-1.5-pro', 'gemini-1.5-flash'))
+            malli_valinta_ui = st.selectbox("Valitse Gemini-malli:", ('gemini-1.5-flash', 'gemini-1.5-pro')) # MUUTOS: Oletusarvo
             noudata_perusohjetta_luodessa = st.checkbox("Noudata teologista perusohjetta", value=True)
             
             if st.button("Aloita tutkimus", type="primary"):
@@ -191,7 +199,6 @@ else:
                         'malli': malli_valinta_ui,
                         'noudata_ohjetta': noudata_perusohjetta_luodessa
                     }
-                    
                     lisamateriaalit = [lue_ladattu_tiedosto(tiedosto) for tiedosto in ladatut_tiedostot] if ladatut_tiedostot else []
                     st.session_state.aineisto['lisamateriaali'] = "\n\n---\n\n".join(lisamateriaalit)
 
@@ -213,6 +220,7 @@ else:
                     st.session_state.step = 'review'
                     st.rerun()
 
+    # VAIHE 2: SISÄLLYSLUETTELON TARKASTUS
     elif st.session_state.step == 'review':
         st.header("2. Tarkista ja muokkaa sisällysluetteloa")
         st.info("Tekoäly on luonut ehdotuksen sisällysluetteloksi ja kerännyt lähdemateriaalin. Voit nyt muokata sisällysluetteloa ennen lopullisen tekstin luomista.")
@@ -235,17 +243,29 @@ else:
                 st.session_state.step = 'output'
                 st.rerun()
 
+    # VAIHE 3: LOPPUTULOKSEN LUONTI JA NÄYTTÖ
     elif st.session_state.step == 'output':
         aineisto = st.session_state.aineisto
         lopputulos = ""
 
         if aineisto['toimintatapa'] == "Valmis opetus (Optimoitu)":
-            with st.spinner("Kirjoitetaan opetusta..."):
+            with st.status("Kirjoitetaan opetusta...", expanded=True) as status:
                 sisallysluettelo = [rivi.strip() for rivi in aineisto['sisallysluettelo'].split('\n') if rivi.strip()]
+                
+                status.write("Vaihe 1/2: Suodatetaan jakeita osioihin...")
                 jae_kartta = jarjestele_jakeet_osioihin(aineisto['sisallysluettelo'], aineisto['jakeet'], 'gemini-1.5-flash', aineisto['noudata_ohjetta'])
                 
-                koko_opetus = []
-                osioiden_maara = len(sisallysluettelo)
+                if jae_kartta:
+                    suodatetut_jakeet = set()
+                    for jakeet_listassa in jae_kartta.values():
+                        for jae in jakeet_listassa:
+                            suodatetut_jakeet.add(jae)
+                    aineisto['suodatettu_jaemaara'] = len(suodatetut_jakeet)
+                else:
+                    aineisto['suodatettu_jaemaara'] = len(aineisto['jakeet'])
+                
+                status.write(f"Vaihe 2/2: Kirjoitetaan opetus osio kerrallaan...")
+                koko_opetus, osioiden_maara = [], len(sisallysluettelo)
                 sanamaara_per_osio = aineisto['sanamaara'] // osioiden_maara if osioiden_maara > 0 else aineisto['sanamaara']
                 
                 for i, otsikko in enumerate(sisallysluettelo):
@@ -275,10 +295,18 @@ Kirjoita noin [TÄYTÄ TAVOITESANAMÄÄRÄ TÄHÄN] sanan mittainen opetus. Käy
                 lopputulos = komentopohja
 
         st.header("Valmis tuotos")
+        sanojen_maara = len(lopputulos.split())
+        info_teksti = f"Sanamäärä: **{sanojen_maara}**"
+        if 'suodatettu_jaemaara' in aineisto:
+            alkuperainen_maara = len(aineisto.get('jakeet', []))
+            info_teksti += f" | Käytettyjä jakeita: **{aineisto['suodatettu_jaemaara']} / {alkuperainen_maara}**"
+        
+        st.info(info_teksti)
         st.download_button("Lataa tiedostona (.txt)", data=lopputulos, file_name="lopputulos.txt")
         st.text_area("Lopputulos:", value=lopputulos, height=600)
 
-        if st.button("Aloita alusta"):
+        # MUUTOS: "Aloita alusta" on nimetty uudelleen
+        if st.button("Uusi tutkimus"):
             st.session_state.step = 'input'
             st.session_state.aineisto = {}
             st.rerun()
