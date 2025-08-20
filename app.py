@@ -61,12 +61,16 @@ def lataa_raamattu(tiedostonimi="bible.json"):
                 if key: book_map[key] = target
     return bible_data, book_map, book_name_map, book_data_map
 
-def etsi_viittaukset_tekstista(text, book_map):
+# ==============================================================================
+# KOKONAAN UUSITTU, ÄLYKKÄÄMPI VIITTAUSTEN TUNNISTUSFUNKTIO (v2)
+# ==============================================================================
+def etsi_viittaukset_tekstista(text, book_map, book_data_map):
     parts = text.replace('\n', ' ').split(';')
     all_references = []
 
     for part in parts:
-        pattern = re.compile(r'\b((?:\d\.\s)?[A-Za-zäöÄÖ\s\.]+?)\s+(\d+):([\d\s,-]+)\b', re.IGNORECASE)
+        # Regex, joka löytää kirjan ja luvun, ja tekee jaeosasta optionaalisen
+        pattern = re.compile(r'\b((?:\d\.\s)?[A-Za-zäöÄÖ\s\.]+?)\s+(\d+)(?::([\d\s,-]+))?\b', re.IGNORECASE)
         matches = pattern.findall(part)
 
         for match in matches:
@@ -77,29 +81,37 @@ def etsi_viittaukset_tekstista(text, book_map):
                 book_id, content = book_map[book_key]
                 book_proper_name = content['info'].get('name', book_name_raw.strip())
                 
-                verse_parts = verses_str.split(',')
-                for verse_part in verse_parts:
-                    verse_part = verse_part.strip()
-                    if not verse_part: continue
-                    
-                    start_verse, end_verse = 0, 0
-                    if '-' in verse_part:
-                        try:
-                            start_verse, end_verse = map(int, verse_part.split('-'))
-                        except ValueError: continue
-                    else:
-                        try:
-                            start_verse = end_verse = int(verse_part)
-                        except ValueError: continue
-                    
-                    all_references.append({
-                        "book_id": book_id,
-                        "book_name": book_proper_name,
-                        "chapter": int(chapter_str),
-                        "start_verse": start_verse,
-                        "end_verse": end_verse,
-                        "original_match": f"{book_proper_name} {chapter_str}:{start_verse}" + (f"-{end_verse}" if start_verse != end_verse else "")
-                    })
+                # Jos jaenumerot on annettu, jäsennetään ne
+                if verses_str:
+                    verse_parts = verses_str.split(',')
+                    for verse_part in verse_parts:
+                        verse_part = verse_part.strip()
+                        if not verse_part: continue
+                        
+                        start_verse, end_verse = 0, 0
+                        if '-' in verse_part:
+                            try: start_verse, end_verse = map(int, verse_part.split('-'))
+                            except ValueError: continue
+                        else:
+                            try: start_verse = end_verse = int(verse_part)
+                            except ValueError: continue
+                        
+                        all_references.append({
+                            "book_id": book_id, "book_name": book_proper_name, "chapter": int(chapter_str),
+                            "start_verse": start_verse, "end_verse": end_verse,
+                            "original_match": f"{book_proper_name} {chapter_str}:{start_verse}" + (f"-{end_verse}" if start_verse != end_verse else "")
+                        })
+                # Jos jaenumeroita ei ole, käsitellään koko lukuna
+                else:
+                    try:
+                        last_verse_num = len(book_data_map[book_id]['chapter'][chapter_str]['verse'])
+                        all_references.append({
+                            "book_id": book_id, "book_name": book_proper_name, "chapter": int(chapter_str),
+                            "start_verse": 1, "end_verse": last_verse_num,
+                            "original_match": f"{book_proper_name} {chapter_str}"
+                        })
+                    except KeyError:
+                        continue # Luku tai kirja ei kelvollinen, ohitetaan
     return all_references
 
 def hae_tarkka_viittaus(ref, book_data_map, book_name_map, ennen, jalkeen):
@@ -119,6 +131,7 @@ def hae_tarkka_viittaus(ref, book_data_map, book_name_map, ennen, jalkeen):
     except KeyError:
         return []
     return list(found_verses)
+
 
 def lue_ladattu_tiedosto(uploaded_file):
     if uploaded_file is None: return ""
@@ -225,7 +238,7 @@ st.set_page_config(page_title="Älykäs Raamattu-tutkija", layout="wide")
 if not st.session_state.password_correct:
     check_password()
 else:
-    st.title("📖 Älykäs Raamattu-tutkija v11.4")
+    st.title("📖 Älykäs Raamattu-tutkija v11.5")
     bible_data, book_map, book_name_map, book_data_map = lataa_raamattu()
 
     try:
@@ -253,19 +266,15 @@ else:
             if st.button("Aloita tutkimus", type="primary"):
                 with st.spinner("Kerätään aineistoa..."):
                     st.session_state.aineisto = {
-                        'aihe': aihe,
-                        'malli': malli_valinta_ui,
-                        'noudata_ohjetta': noudata_perusohjetta_luodessa,
-                        'jakeita_ennen': jakeita_ennen,
-                        'jakeita_jalkeen': jakeita_jalkeen
+                        'aihe': aihe, 'malli': malli_valinta_ui, 'noudata_ohjetta': noudata_perusohjetta_luodessa,
+                        'jakeita_ennen': jakeita_ennen, 'jakeita_jalkeen': jakeita_jalkeen
                     }
                     lisamateriaalit = [lue_ladattu_tiedosto(tiedosto) for tiedosto in ladatut_tiedostot] if ladatut_tiedostot else []
                     st.session_state.aineisto['lisamateriaali'] = "\n\n---\n\n".join(lisamateriaalit)
-
                     kaikki_loydetyt_jakeet = set()
                     
                     st.write("Haetaan jakeita suoraan aihe-kuvauksesta...")
-                    initial_refs = etsi_viittaukset_tekstista(aihe, book_map)
+                    initial_refs = etsi_viittaukset_tekstista(aihe, book_map, book_data_map)
                     for ref in initial_refs:
                         fetched_verses = hae_tarkka_viittaus(ref, book_data_map, book_name_map, jakeita_ennen, jakeita_jalkeen)
                         for verse in fetched_verses:
@@ -274,10 +283,8 @@ else:
                     st.write("Tehdään tekoälypohjainen haku...")
                     suunnitelma_prompt = f"Luo JSON-muodossa lista avainsanoista ('hakusanat') ja Raamatun kirjoista ('kirjat') aiheelle '{aihe}'. ÄLÄ sisällytä vastaukseen Raamatun viittauksia, jotka ovat jo aiheessa."
                     suunnitelma_str = tee_api_kutsu(suunnitelma_prompt, 'gemini-1.5-flash', noudata_perusohjetta_luodessa)
-                    try: 
-                        suunnitelma = json.loads(suunnitelma_str.strip().replace("```json", "").replace("```", ""))
-                    except: 
-                        suunnitelma = {"hakusanat": aihe.split(), "kirjat": []}
+                    try: suunnitelma = json.loads(suunnitelma_str.strip().replace("```json", "").replace("```", ""))
+                    except: suunnitelma = {"hakusanat": aihe.split(), "kirjat": []}
                     
                     for kirja in suunnitelma.get("kirjat", []):
                         for sana in suunnitelma.get("hakusanat", []):
@@ -285,7 +292,6 @@ else:
                                 kaikki_loydetyt_jakeet.add(jae)
                     
                     st.session_state.aineisto['jakeet'] = sorted(list(kaikki_loydetyt_jakeet))
-
                     st.write("Luodaan sisällysluettelo...")
                     sisallysluettelo_str = luo_sisallysluettelo(aihe, malli_valinta_ui, noudata_perusohjetta_luodessa)
                     st.session_state.aineisto['sisallysluettelo'] = sisallysluettelo_str
@@ -295,7 +301,7 @@ else:
 
     elif st.session_state.step == 'review':
         st.header("2. Tarkista sisällysluettelo ja lähteet")
-        st.info("Voit nyt muokata sisällysluetteloa. Voit myös lisätä siihen Raamatun viittauksia (esim. Joh. 3:16, 21), ja ohjelma tarkistaa, löytyvätkö ne jo lähteistä.")
+        st.info("Voit nyt muokata sisällysluetteloa. Voit myös lisätä siihen Raamatun viittauksia (esim. Joh. 3:16, 21 tai Filemon 1), ja ohjelma tarkistaa, löytyvätkö ne jo lähteistä.")
 
         muokattu_sisallysluettelo = st.text_area("Sisällysluettelo:", value=st.session_state.aineisto.get('sisallysluettelo', ''), height=300, key='sisallysluettelo_editori')
         
@@ -314,7 +320,7 @@ else:
                 st.session_state.aineisto['sanamaara'] = sanamaara
 
                 with st.spinner("Tarkistetaan viittauksia..."):
-                    references = etsi_viittaukset_tekstista(muokattu_sisallysluettelo, book_map)
+                    references = etsi_viittaukset_tekstista(muokattu_sisallysluettelo, book_map, book_data_map)
                     
                     existing_refs_set = set()
                     for verse_line in st.session_state.aineisto.get('jakeet', []):
@@ -341,7 +347,6 @@ else:
             
             missing_refs_str = [f'- {ref["original_match"]}' for ref in st.session_state.missing_verses]
             st.markdown("\n".join(missing_refs_str))
-
             st.write("Haluatko hakea nämä puuttuvat jakeet ja lisätä ne lähdemateriaaliin ennen jatkamista?")
             
             col1, col2 = st.columns(2)
@@ -357,13 +362,10 @@ else:
                             )
                             for verse in fetched:
                                 newly_fetched.add(verse)
-                        
                         st.session_state.aineisto['jakeet'] = sorted(list(newly_fetched))
-                    
                     st.session_state.missing_verses = None
                     st.session_state.step = 'output'
                     st.rerun()
-
             with col2:
                 if st.button("Ei, jatka ilman näitä jakeita"):
                     st.session_state.missing_verses = None
@@ -375,7 +377,6 @@ else:
         lopputulos = ""
         jae_kartta = None
 
-        # KORJAUS: "Uusi tutkimus" -nappi siirretty sivupalkkiin
         with st.sidebar:
             st.header("Valinnat")
             if st.button("Uusi tutkimus"):
@@ -395,7 +396,6 @@ else:
         if aineisto['toimintatapa'] == "Valmis opetus (Optimoitu)":
             with st.status("Kirjoitetaan opetusta...", expanded=True) as status:
                 sisallysluettelo = [rivi.strip() for rivi in aineisto['sisallysluettelo'].split('\n') if rivi.strip()]
-                
                 status.write(f"Kirjoitetaan opetus osio kerrallaan...")
                 koko_opetus, osioiden_maara = [], len(sisallysluettelo)
                 sanamaara_per_osio = aineisto['sanamaara'] // osioiden_maara if osioiden_maara > 0 else aineisto['sanamaara']
