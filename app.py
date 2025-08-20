@@ -61,15 +61,11 @@ def lataa_raamattu(tiedostonimi="bible.json"):
                 if key: book_map[key] = target
     return bible_data, book_map, book_name_map, book_data_map
 
-# ==============================================================================
-# KOKONAAN UUSITTU, ÄLYKKÄÄMPI VIITTAUSTEN TUNNISTUSFUNKTIO (v2)
-# ==============================================================================
 def etsi_viittaukset_tekstista(text, book_map, book_data_map):
     parts = text.replace('\n', ' ').split(';')
     all_references = []
 
     for part in parts:
-        # Regex, joka löytää kirjan ja luvun, ja tekee jaeosasta optionaalisen
         pattern = re.compile(r'\b((?:\d\.\s)?[A-Za-zäöÄÖ\s\.]+?)\s+(\d+)(?::([\d\s,-]+))?\b', re.IGNORECASE)
         matches = pattern.findall(part)
 
@@ -81,7 +77,6 @@ def etsi_viittaukset_tekstista(text, book_map, book_data_map):
                 book_id, content = book_map[book_key]
                 book_proper_name = content['info'].get('name', book_name_raw.strip())
                 
-                # Jos jaenumerot on annettu, jäsennetään ne
                 if verses_str:
                     verse_parts = verses_str.split(',')
                     for verse_part in verse_parts:
@@ -101,7 +96,6 @@ def etsi_viittaukset_tekstista(text, book_map, book_data_map):
                             "start_verse": start_verse, "end_verse": end_verse,
                             "original_match": f"{book_proper_name} {chapter_str}:{start_verse}" + (f"-{end_verse}" if start_verse != end_verse else "")
                         })
-                # Jos jaenumeroita ei ole, käsitellään koko lukuna
                 else:
                     try:
                         last_verse_num = len(book_data_map[book_id]['chapter'][chapter_str]['verse'])
@@ -111,7 +105,7 @@ def etsi_viittaukset_tekstista(text, book_map, book_data_map):
                             "original_match": f"{book_proper_name} {chapter_str}"
                         })
                     except KeyError:
-                        continue # Luku tai kirja ei kelvollinen, ohitetaan
+                        continue
     return all_references
 
 def hae_tarkka_viittaus(ref, book_data_map, book_name_map, ennen, jalkeen):
@@ -131,7 +125,6 @@ def hae_tarkka_viittaus(ref, book_data_map, book_name_map, ennen, jalkeen):
     except KeyError:
         return []
     return list(found_verses)
-
 
 def lue_ladattu_tiedosto(uploaded_file):
     if uploaded_file is None: return ""
@@ -207,10 +200,11 @@ def jarjestele_jakeet_osioihin(sisallysluettelo, jakeet, malli, noudata_perusohj
         st.warning("Jakeiden automaattinen järjestely epäonnistui.")
         return None
 
+# KORJAUS: Lisätty kehotteeseen ohje toiston välttämisestä.
 def kirjoita_osio(aihe, osion_otsikko, jakeet, lisamateriaali, sanamaara_osio, malli, noudata_perusohjetta):
     jae_teksti = "\n".join(jakeet) if jakeet else "Ei Raamattu-jakeita tähän osioon."
     lisamateriaali_osio = f"\n\n--- KÄYTTÄJÄN ANTAMA LISÄMATERIAALI ---\n{lisamateriaali}" if lisamateriaali else ""
-    prompt = f"Olet teologi. Kirjoita yksi kappale laajasta opetuksesta pääaiheella '{aihe}'. Kappaleen otsikko on: '{osion_otsikko}'. Kirjoita noin {sanamaara_osio} sanan osuus. ÄLÄ TOISTA OTSIKKOA. Aloita suoraan leipätekstillä. Käytä AINOASTAAN annettua KR33/38-lähdemateriaalia ja käyttäjän antamaa lisämateriaalia. Lainaa keskeiset jakeet sanatarkasti. LÄHDEMATERIAALI:\n{jae_teksti}{lisamateriaali_osio}"
+    prompt = f"Olet teologi. Kirjoita yksi kappale laajasta opetuksesta pääaiheella '{aihe}'. Tämän kappaleen otsikko on: '{osion_otsikko}'. Kirjoita noin {sanamaara_osio} sanan laadukas ja syventävä osuus. ÄLÄ TOISTA OTSIKKOA. Aloita suoraan leipätekstillä. ÄLÄ TOISTA ASIOITA, joita ylemmän tason otsikot ovat jo todennäköisesti käsitelleet, vaan keskity tämän alaotsikon erityiseen näkökulmaan. Käytä AINOASTAAN annettua KR33/38-lähdemateriaalia ja käyttäjän antamaa lisämateriaalia. Lainaa keskeiset jakeet sanatarkasti. LÄHDEMATERIAALI:\n{jae_teksti}{lisamateriaali_osio}"
     return tee_api_kutsu(prompt, malli, noudata_perusohjetta)
 
 def check_password():
@@ -238,7 +232,7 @@ st.set_page_config(page_title="Älykäs Raamattu-tutkija", layout="wide")
 if not st.session_state.password_correct:
     check_password()
 else:
-    st.title("📖 Älykäs Raamattu-tutkija v11.5")
+    st.title("📖 Älykäs Raamattu-tutkija v11.6")
     bible_data, book_map, book_name_map, book_data_map = lataa_raamattu()
 
     try:
