@@ -185,7 +185,8 @@ else:
     if st.session_state.step == 'input':
         with st.sidebar:
             st.header("Asetukset")
-            aihe = st.text_area("Mistä aiheesta?", "Jumalan kutsu", height=200)
+            # MUUTOS: Tekstikentän korkeutta kasvatettu.
+            aihe = st.text_area("Mistä aiheesta?", "Jumalan kutsu", height=250)
             ladatut_tiedostot = st.file_uploader("Lataa lisämateriaalia", type=['txt', 'pdf', 'docx'], accept_multiple_files=True)
             st.subheader("Haun asetukset")
             jakeita_ennen = st.slider("Jakeita ennen osumaa:", 0, 10, 1)
@@ -295,16 +296,17 @@ Kirjoita noin [TÄYTÄ TAVOITESANAMÄÄRÄ TÄHÄN] sanan mittainen opetus. Käy
                 lopputulos = komentopohja
 
         st.header("Valmis tuotos")
-        sanojen_maara = len(lopputulos.split())
-        info_teksti = f"Sanamäärä: **{sanojen_maara}**"
         
-        # KORJATTU RAPORTOINTI
+        # MUUTOS: Koko raportointilogiikka on uusittu selkeämmäksi.
+        info_teksti = ""
         alkuperainen_maara = len(aineisto.get('jakeet', []))
+
         if aineisto.get('toimintatapa') == "Valmis opetus (Optimoitu)":
+            sanojen_maara = len(lopputulos.split())
             suodatettu_maara = aineisto.get('suodatettu_jaemaara', alkuperainen_maara)
-            info_teksti += f" | Jakeita (Alkup. / Suodatettu): **{alkuperainen_maara} / {suodatettu_maara}**"
-        else: # Raportti-näkymä
-             info_teksti += f" | Jakeita yhteensä: **{alkuperainen_maara}**"
+            info_teksti = f"Sanamäärä: **{sanojen_maara}** | Jakeita (Alkup. / Suodatettu): **{alkuperainen_maara} / {suodatettu_maara}**"
+        else: # Tutkimusraportti-näkymä
+            info_teksti = f"Jakeita kerätty yhteensä: **{alkuperainen_maara}**"
         
         st.info(info_teksti)
         st.download_button("Lataa tiedostona (.txt)", data=lopputulos, file_name="lopputulos.txt")
