@@ -61,9 +61,15 @@ def lataa_raamattu(tiedostonimi="bible.json"):
                 if key: book_map[key] = target
     return bible_data, book_map, book_name_map, book_data_map
 
+# ==============================================================================
+# KOKONAAN UUSITTU, JOUSTAVA VIITTAUSTEN TUNNISTUSFUNKTIO (v3)
+# ==============================================================================
 def etsi_viittaukset_tekstista(text, book_map, book_data_map):
     parts = text.replace('\n', ' ').split(';')
     all_references = []
+    
+    # Järjestetään kirja-avaimet pituuden mukaan laskevasti, jotta "1. kun" tunnistuu ennen "kun"
+    sorted_book_keys = sorted(book_map.keys(), key=len, reverse=True)
 
     for part in parts:
         pattern = re.compile(r'((?:\d\.\s)?[A-Za-zäöÄÖ\s\.]+?)\s+(\d+)(?::([\d\s,-]+))?', re.IGNORECASE)
@@ -71,13 +77,20 @@ def etsi_viittaukset_tekstista(text, book_map, book_data_map):
 
         for match in matches:
             book_name_raw, chapter_str, verses_str = match
-            book_key = book_name_raw.strip().lower().replace('.', '').replace(' ', '')
-
-            if book_key in book_map:
-                book_id, content = book_map[book_key]
+            book_key_raw = book_name_raw.strip().lower().replace('.', '').replace(' ', '')
+            
+            # Etsitään vastaava avain, joka alkaa käyttäjän syötteellä
+            found_key = None
+            for key in sorted_book_keys:
+                if key.startswith(book_key_raw):
+                    found_key = key
+                    break
+            
+            if found_key:
+                book_id, content = book_map[found_key]
                 book_proper_name = content['info'].get('name', book_name_raw.strip())
                 
-                if verses_str:
+                if verses_str: # Jos jakeet on määritelty
                     verse_parts = verses_str.split(',')
                     for verse_part in verse_parts:
                         verse_part = verse_part.strip()
@@ -96,7 +109,7 @@ def etsi_viittaukset_tekstista(text, book_map, book_data_map):
                             "start_verse": start_verse, "end_verse": end_verse,
                             "original_match": f"{book_proper_name} {chapter_str}:{start_verse}" + (f"-{end_verse}" if start_verse != end_verse else "")
                         })
-                else:
+                else: # Jos vain luku on määritelty
                     try:
                         last_verse_num = len(book_data_map[book_id]['chapter'][chapter_str]['verse'])
                         all_references.append({
@@ -107,6 +120,7 @@ def etsi_viittaukset_tekstista(text, book_map, book_data_map):
                     except KeyError:
                         continue
     return all_references
+
 
 def hae_tarkka_viittaus(ref, book_data_map, book_name_map, ennen, jalkeen):
     found_verses = set()
@@ -231,7 +245,7 @@ st.set_page_config(page_title="Älykäs Raamattu-tutkija", layout="wide")
 if not st.session_state.password_correct:
     check_password()
 else:
-    st.title("📖 Älykäs Raamattu-tutkija v11.9")
+    st.title("📖 Älykäs Raamattu-tutkija v12.0")
     bible_data, book_map, book_name_map, book_data_map = lataa_raamattu()
 
     try:
@@ -315,12 +329,10 @@ else:
                 with st.spinner("Tarkistetaan viittauksia..."):
                     references_in_toc = etsi_viittaukset_tekstista(muokattu_sisallysluettelo, book_map, book_data_map)
                     
-                    # KORJATTU JA YKSINKERTAISTETTU TARKISTUSLOGIIKKA
                     existing_verses_str = "\n".join(st.session_state.aineisto.get('jakeet', [])).lower()
                     
                     missing = []
                     for ref in references_in_toc:
-                        # Tarkistetaan jokainen jae alueelta erikseen
                         found_in_source = True
                         for verse_num in range(ref['start_verse'], ref['end_verse'] + 1):
                             ref_str_to_check = f'{ref["book_name"]} {ref["chapter"]}:{verse_num}'.lower()
