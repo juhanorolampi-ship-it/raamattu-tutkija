@@ -62,7 +62,7 @@ def lataa_raamattu(tiedostonimi="bible.json"):
     return bible_data, book_map, book_name_map, book_data_map
 
 # ==============================================================================
-# KOKONAAN UUSITTU, JOUSTAVA VIITTAUSTEN TUNNISTUSFUNKTIO (v4 - Korjattu)
+# VIITTAUSTEN TUNNISTUSFUNKTIO (v5 - Vankempi korjaus)
 # ==============================================================================
 def etsi_viittaukset_tekstista(text, book_map, book_data_map):
     # Poistetaan sulkeet ja erikoismerkit numeroiden ympäriltä selkeyden vuoksi
@@ -70,7 +70,7 @@ def etsi_viittaukset_tekstista(text, book_map, book_data_map):
     parts = cleaned_text.replace('\n', ' ').split(';')
     all_references = []
 
-    # Järjestetään kirja-avaimet pituuden mukaan laskevasti, jotta "1. kun" tunnistuu ennen "kun"
+    # Järjestetään kirja-avaimet pituuden mukaan laskevasti
     sorted_book_keys = sorted(book_map.keys(), key=len, reverse=True)
 
     for part in parts:
@@ -82,11 +82,17 @@ def etsi_viittaukset_tekstista(text, book_map, book_data_map):
             book_name_raw, chapter_str, verses_str = match
             book_key_raw = book_name_raw.strip().lower().replace('.', '').replace(' ', '')
             
-            # --- TÄMÄ ON UUSI KORJAUS ---
-            # Ohitetaan osumat, jotka ovat todennäköisesti listan järjestysnumeroita (esim. "1.", "2.")
-            if len(book_key_raw) <= 2 and book_key_raw.isdigit():
+            # --- UUSI, VANKEMPI SUODATUS ---
+            # 1. Ohita täysin tyhjät osumat (esim. pelkkä piste).
+            if not book_key_raw:
                 continue
-            # ---------------------------
+
+            # 2. Ohita osumat, jotka EIVÄT SISÄLLÄ YHTÄÄN KIRJAINTA.
+            # Tämä suodattaa tehokkaasti pois kaikki listanumerot (esim. "1.", "2.2.", "3.1.4")
+            # mutta sallii numeroidut kirjat (esim. "1. Moos." -> "1moos").
+            if not re.search(r'[a-zäö]', book_key_raw):
+                 continue
+            # ------------------------------------
 
             found_key = None
             for key in sorted_book_keys:
@@ -253,7 +259,7 @@ st.set_page_config(page_title="Älykäs Raamattu-tutkija", layout="wide")
 if not st.session_state.password_correct:
     check_password()
 else:
-    st.title("📖 Älykäs Raamattu-tutkija v12.1")
+    st.title("📖 Älykäs Raamattu-tutkija v12.2")
     bible_data, book_map, book_name_map, book_data_map = lataa_raamattu()
 
     try:
@@ -416,9 +422,7 @@ else:
                 sanamaara_per_osio = aineisto['sanamaara'] // osioiden_maara if osioiden_maara > 0 else aineisto['sanamaara']
                 
                 for i, otsikko in enumerate(sisallysluettelo):
-                    # --- TÄMÄ ON UUSI PARANNUS ---
                     status.write(f"Kirjoitetaan osiota {i+1}/{osioiden_maara}: {otsikko}...")
-                    # ---------------------------
                     relevantit_jakeet = jae_kartta.get(otsikko, []) if jae_kartta else aineisto['jakeet']
                     osio_teksti = kirjoita_osio(aineisto['aihe'], otsikko, relevantit_jakeet, aineisto['lisamateriaali'], sanamaara_per_osio, aineisto['malli'], aineisto['noudata_ohjetta'])
                     if osio_teksti:
@@ -460,4 +464,3 @@ Kirjoita noin [TÄYTÄ TAVOITESANAMÄÄRÄ TÄHÄN] sanan mittainen opetus. Käy
         st.info(info_teksti)
         st.download_button("Lataa tiedostona (.txt)", data=lopputulos, file_name="lopputulos.txt")
         st.text_area("Lopputulos:", value=lopputulos, height=600)
-
