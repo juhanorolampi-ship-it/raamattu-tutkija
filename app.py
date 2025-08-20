@@ -227,7 +227,7 @@ else:
     if st.session_state.step == 'input':
         with st.sidebar:
             st.header("Asetukset")
-            aihe = st.text_area("Mistä aiheesta haluaisit laatia opetuksen?", "Jumalan kutsu", height=250)
+            aihe = st.text_area("Mikä on opetuksen aihe? Muista tarkka määrittely", "Jumalan kutsu", height=200)
             ladatut_tiedostot = st.file_uploader("Lataa lisämateriaalia", type=['txt', 'pdf', 'docx'], accept_multiple_files=True)
             st.subheader("Haun asetukset")
             jakeita_ennen = st.slider("Jakeita ennen osumaa:", 0, 10, 1)
@@ -419,3 +419,4 @@ Kirjoita noin [TÄYTÄ TAVOITESANAMÄÄRÄ TÄHÄN] sanan mittainen opetus. Käy
             st.session_state.step = 'input'
             st.session_state.aineisto = {}
             st.session_state.missing_verses = None # Nollaus
+
