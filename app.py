@@ -110,6 +110,36 @@ def luo_sisallysluettelo(aihe, sanamaara, malli, noudata_perusohjetta):
     prompt = f"Olet teologi. Luo yksityiskohtainen sisällysluettelo noin {sanamaara} sanan opetukselle aiheesta '{aihe}'. Rakenna runko, jossa on johdanto, 3-5 pääkohtaa ja jokaiseen 2-4 alakohtaa, sekä yhteenveto. Vastaa AINOASTAAN numeroituna listana."
     return tee_api_kutsu(prompt, malli, noudata_perusohjetta)
 
+# --- UUSI OPTIMOINTIFUNKTIO ---
+def jarjestele_jakeet_osioihin(sisallysluettelo, jakeet, malli, noudata_perusohjetta):
+    jae_teksti = "\n".join(jakeet)
+    prompt = f"""
+    Tehtäväsi on järjestellä annetut Raamatun jakeet opetuksen sisällysluettelon mukaisiin osioihin.
+    
+    SISÄLLYSLUETTELO:
+    {sisallysluettelo}
+
+    LÖYDETYT JAKEET:
+    {jae_teksti}
+
+    Vastaa AINOASTAAN JSON-muodossa. Avaimena tulee olla sisällysluettelon TÄSMÄLLINEN otsikko ja arvona lista siihen parhaiten sopivista jakeista. Jos johonkin osioon ei sovi yhtään jaetta, jätä sen arvo tyhjäksi listaksi [].
+    
+    Esimerkkivastaus:
+    {{
+        "1. Johdanto: Armon määritelmä": ["Room. 5:1 - ...", "Ef. 2:8 - ..."],
+        "2. Armo Vanhassa testamentissa": ["1. Moos. 6:8 - ..."],
+        "2.1. Armo luomisessa": []
+    }}
+    """
+    vastaus_str = tee_api_kutsu(prompt, malli, noudata_perusohjetta)
+    try:
+        # Puhdistetaan vastaus mahdollisista Markdown-merkinnöistä
+        cleaned_response = vastaus_str.strip().replace("```json", "").replace("```", "")
+        return json.loads(cleaned_response)
+    except (json.JSONDecodeError, AttributeError):
+        st.warning("Jakeiden automaattinen järjestely epäonnistui. Jatkeaan käyttämällä kaikkia jakeita joka osiossa.")
+        return None
+
 def kirjoita_osio(aihe, osion_otsikko, jakeet, lisamateriaali, sanamaara_osio, malli, noudata_perusohjetta):
     jae_teksti = "\n".join(jakeet) if jakeet else "Ei Raamattu-jakeita tähän osioon."
     lisamateriaali_osio = f"\n\n--- KÄYTTÄJÄN ANTAMA LISÄMATERIAALI ---\n{lisamateriaali}" if lisamateriaali else ""
@@ -147,7 +177,7 @@ st.set_page_config(page_title="Älykäs Raamattu-tutkija", layout="wide")
 if not st.session_state.password_correct:
     check_password()
 else:
-    st.title("📖 Älykäs Raamattu-tutkija v5.2")
+    st.title("📖 Älykäs Raamattu-tutkija v6.0 (Optimoitu)")
     bible_data, book_map, book_name_map = lataa_raamattu()
 
     try:
@@ -158,29 +188,18 @@ else:
 
     with st.sidebar:
         st.success("Kirjautuminen onnistui!")
-        
-        # --- KORJATTU PROJEKTIN LATAUSOSIO ---
         st.header("Jatka aiempaa projektia")
-        ladattu_projekti = st.file_uploader("Lataa projektitiedosto (.txt)", type=['txt'])
-        
-        # Käsittellään ladattu tiedosto heti kun se ilmestyy
+        ladattu_projekti = st.file_uploader("Lataa projektitiedosto (.txt)", type=['txt'], key="projektin_lataus")
         if ladattu_projekti is not None:
             projekti_teksti = lue_ladattu_tiedosto(ladattu_projekti)
             st.session_state.opetus_teksti = projekti_teksti
-            # Emme enää käytä rerun()-komentoa, joka aiheutti ongelman
-            st.info("Projekti ladattu onnistuneesti. Voit nyt muokata sitä.")
-
+            st.info("Projekti ladattu onnistuneesti.")
 
         st.divider()
         st.header("Luo uusi opetus")
         aihe = st.text_area("Mistä aiheesta haluat luoda opetuksen?", "Jumalan kutsu", height=100)
         
-        ladatut_tiedostot = st.file_uploader(
-            "Lataa lisämateriaalia (valinnainen)", 
-            type=['txt', 'pdf', 'docx'],
-            accept_multiple_files=True
-        )
-
+        ladatut_tiedostot = st.file_uploader("Lataa lisämateriaalia (valinnainen)", type=['txt', 'pdf', 'docx'], accept_multiple_files=True)
         sanamaara = st.number_input("Mikä on tavoitesanamäärä?", min_value=300, max_value=20000, value=1000, step=100)
         malli_valinta_ui = st.selectbox("Valitse Gemini-malli:", ('gemini-1.5-pro', 'gemini-1.5-flash'))
         noudata_perusohjetta_luodessa = st.checkbox("Noudata teologista perusohjetta", value=True)
@@ -188,22 +207,19 @@ else:
 
     if suorita_nappi:
         with st.status("Luodaan opetusta...", expanded=True) as status:
-            status.write("[1/5] Luetaan lisämateriaalia...")
-            lisamateriaalit = []
-            if ladatut_tiedostot:
-                for tiedosto in ladatut_tiedostot:
-                    lisamateriaalit.append(lue_ladattu_tiedosto(tiedosto))
+            status.write("[1/6] Luetaan lisämateriaalia...")
+            lisamateriaalit = [lue_ladattu_tiedosto(tiedosto) for tiedosto in ladatut_tiedostot] if ladatut_tiedostot else []
             lisamateriaali_teksti = "\n\n---\n\n".join(lisamateriaalit)
             if lisamateriaali_teksti:
                 status.write(f"-> Lisämateriaalista luettu {len(lisamateriaali_teksti.split())} sanaa.")
 
-            status.write("[2/5] Luodaan hakusanat...")
+            status.write("[2/6] Luodaan hakusanat...")
             suunnitelma_prompt = f"Luo JSON-muodossa lista avainsanoista ('hakusanat') ja Raamatun kirjoista ('kirjat') aiheelle '{aihe}'."
             suunnitelma_str = tee_api_kutsu(suunnitelma_prompt, 'gemini-1.5-flash', noudata_perusohjetta_luodessa)
             try: suunnitelma = json.loads(suunnitelma_str.strip().replace("```json", "").replace("```", ""))
             except: suunnitelma = {"hakusanat": aihe.split(), "kirjat": []}
             
-            status.write("[3/5] Etsitään jakeita...")
+            status.write("[3/6] Etsitään jakeita...")
             kaikki_loydetyt_jakeet = set()
             for kirja in suunnitelma.get("kirjat", []):
                 for sana in suunnitelma.get("hakusanat", []):
@@ -211,18 +227,26 @@ else:
                         kaikki_loydetyt_jakeet.add(jae)
             status.write(f"-> Löydetty {len(kaikki_loydetyt_jakeet)} jaetta.")
 
-            status.write("[4/5] Luodaan sisällysluettelo...")
+            status.write("[4/6] Luodaan sisällysluettelo...")
             sisallysluettelo_str = luo_sisallysluettelo(aihe, sanamaara, malli_valinta_ui, noudata_perusohjetta_luodessa)
             if not sisallysluettelo_str: st.stop()
             sisallysluettelo = [rivi.strip() for rivi in sisallysluettelo_str.split('\n') if rivi.strip()]
 
-            status.write("[5/5] Kirjoitetaan opetus osio kerrallaan...")
+            # --- UUSI VAIHE ---
+            status.write("[5/6] Järjestellään jakeita osioihin (kustannusoptimointi)...")
+            jae_kartta = jarjestele_jakeet_osioihin(sisallysluettelo_str, list(kaikki_loydetyt_jakeet), 'gemini-1.5-flash', noudata_perusohjetta_luodessa)
+
+            status.write("[6/6] Kirjoitetaan opetus osio kerrallaan...")
             koko_opetus, osioiden_maara = [], len(sisallysluettelo)
             sanamaara_per_osio = sanamaara // osioiden_maara if osioiden_maara > 0 else sanamaara
             progress_bar = st.progress(0)
             for i, otsikko in enumerate(sisallysluettelo):
                 status.update(label=f"Kirjoitetaan osiota {i+1}/{osioiden_maara}: \"{otsikko}\"...")
-                osio_teksti = kirjoita_osio(aihe, otsikko, list(kaikki_loydetyt_jakeet), lisamateriaali_teksti, sanamaara_per_osio, malli_valinta_ui, noudata_perusohjetta_luodessa)
+                
+                # Käytetään joko järjesteltyjä jakeita tai kaikkia, jos järjestely epäonnistui
+                relevantit_jakeet = jae_kartta.get(otsikko, list(kaikki_loydetyt_jakeet)) if jae_kartta else list(kaikki_loydetyt_jakeet)
+                
+                osio_teksti = kirjoita_osio(aihe, otsikko, relevantit_jakeet, lisamateriaali_teksti, sanamaara_per_osio, malli_valinta_ui, noudata_perusohjetta_luodessa)
                 if osio_teksti: koko_opetus.append(f"### {otsikko}\n\n{osio_teksti}\n\n")
                 progress_bar.progress((i + 1) / osioiden_maara)
             
@@ -234,14 +258,7 @@ else:
     if st.session_state.opetus_teksti:
         st.header("Työstettävä opetus")
         sanojen_maara = len(st.session_state.opetus_teksti.split())
-        st.download_button(
-            label="Tallenna projekti tiedostona (.txt)",
-            data=st.session_state.opetus_teksti,
-            file_name=f"projekti.txt",
-            mime="text/plain",
-            help="Tallenna nykyinen työsi, jotta voit jatkaa sitä myöhemmin."
-        )
-
+        st.download_button(label="Tallenna projekti tiedostona (.txt)", data=st.session_state.opetus_teksti, file_name=f"projekti.txt", mime="text/plain", help="Tallenna nykyinen työsi, jotta voit jatkaa sitä myöhemmin.")
         st.text_area("Valmis teksti:", value=st.session_state.opetus_teksti, height=400, key="editori")
         st.header("Muokkaa osiota")
         st.warning("**Ohje:** Kopioi osa yllä olevasta tekstistä alempaan 'Muokattava osa' -kenttään, anna ohje ja paina 'Paranna'.")
