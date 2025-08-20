@@ -169,7 +169,7 @@ st.set_page_config(page_title="Älykäs Raamattu-tutkija", layout="wide")
 if not st.session_state.password_correct:
     check_password()
 else:
-    st.title("📖 Älykäs Raamattu-tutkija v10.3")
+    st.title("📖 Älykäs Raamattu-tutkija v10.4")
     bible_data, book_map, book_name_map, book_data_map = lataa_raamattu()
 
     try:
@@ -185,7 +185,6 @@ else:
     if st.session_state.step == 'input':
         with st.sidebar:
             st.header("Asetukset")
-            # MUUTOS: Tekstikentän korkeutta kasvatettu.
             aihe = st.text_area("Mistä aiheesta?", "Jumalan kutsu", height=250)
             ladatut_tiedostot = st.file_uploader("Lataa lisämateriaalia", type=['txt', 'pdf', 'docx'], accept_multiple_files=True)
             st.subheader("Haun asetukset")
@@ -248,29 +247,30 @@ else:
     elif st.session_state.step == 'output':
         aineisto = st.session_state.aineisto
         lopputulos = ""
+        jae_kartta = None
+
+        # MUUTOS: Jakeiden suodatus on siirretty tänne, jotta se suoritetaan aina.
+        with st.spinner("Järjestellään ja suodatetaan jakeita..."):
+            jae_kartta = jarjestele_jakeet_osioihin(aineisto['sisallysluettelo'], aineisto['jakeet'], 'gemini-1.5-flash', aineisto['noudata_ohjetta'])
+            if jae_kartta:
+                # Käytetään set-rakennetta duplikaattien poistamiseksi tehokkaasti
+                suodatetut_jakeet = {jae for jakeet_listassa in jae_kartta.values() for jae in jakeet_listassa}
+                aineisto['suodatettu_jaemaara'] = len(suodatetut_jakeet)
+            else:
+                # Jos suodatus epäonnistuu, suodatettu määrä on sama kuin alkuperäinen
+                aineisto['suodatettu_jaemaara'] = len(aineisto['jakeet'])
 
         if aineisto['toimintatapa'] == "Valmis opetus (Optimoitu)":
             with st.status("Kirjoitetaan opetusta...", expanded=True) as status:
                 sisallysluettelo = [rivi.strip() for rivi in aineisto['sisallysluettelo'].split('\n') if rivi.strip()]
                 
-                status.write("Vaihe 1/2: Suodatetaan jakeita osioihin...")
-                jae_kartta = jarjestele_jakeet_osioihin(aineisto['sisallysluettelo'], aineisto['jakeet'], 'gemini-1.5-flash', aineisto['noudata_ohjetta'])
-                
-                if jae_kartta:
-                    suodatetut_jakeet = set()
-                    for jakeet_listassa in jae_kartta.values():
-                        for jae in jakeet_listassa:
-                            suodatetut_jakeet.add(jae)
-                    aineisto['suodatettu_jaemaara'] = len(suodatetut_jakeet)
-                else:
-                    aineisto['suodatettu_jaemaara'] = len(aineisto['jakeet'])
-                
-                status.write(f"Vaihe 2/2: Kirjoitetaan opetus osio kerrallaan...")
+                status.write(f"Kirjoitetaan opetus osio kerrallaan...")
                 koko_opetus, osioiden_maara = [], len(sisallysluettelo)
                 sanamaara_per_osio = aineisto['sanamaara'] // osioiden_maara if osioiden_maara > 0 else aineisto['sanamaara']
                 
                 for i, otsikko in enumerate(sisallysluettelo):
-                    relevantit_jakeet = jae_kartta.get(otsikko, aineisto['jakeet']) if jae_kartta else aineisto['jakeet']
+                    # Käytetään aiemmin luotua jae_karttaa
+                    relevantit_jakeet = jae_kartta.get(otsikko, []) if jae_kartta else aineisto['jakeet']
                     osio_teksti = kirjoita_osio(aineisto['aihe'], otsikko, relevantit_jakeet, aineisto['lisamateriaali'], sanamaara_per_osio, aineisto['malli'], aineisto['noudata_ohjetta'])
                     if osio_teksti:
                         koko_opetus.append(f"### {otsikko}\n\n{osio_teksti}\n\n")
@@ -297,16 +297,15 @@ Kirjoita noin [TÄYTÄ TAVOITESANAMÄÄRÄ TÄHÄN] sanan mittainen opetus. Käy
 
         st.header("Valmis tuotos")
         
-        # MUUTOS: Koko raportointilogiikka on uusittu selkeämmäksi.
-        info_teksti = ""
+        # MUUTOS: Raportointilogiikkaa on selkeytetty näyttämään oikeat luvut molemmissa tiloissa.
         alkuperainen_maara = len(aineisto.get('jakeet', []))
+        suodatettu_maara = aineisto.get('suodatettu_jaemaara', alkuperainen_maara)
 
         if aineisto.get('toimintatapa') == "Valmis opetus (Optimoitu)":
             sanojen_maara = len(lopputulos.split())
-            suodatettu_maara = aineisto.get('suodatettu_jaemaara', alkuperainen_maara)
             info_teksti = f"Sanamäärä: **{sanojen_maara}** | Jakeita (Alkup. / Suodatettu): **{alkuperainen_maara} / {suodatettu_maara}**"
         else: # Tutkimusraportti-näkymä
-            info_teksti = f"Jakeita kerätty yhteensä: **{alkuperainen_maara}**"
+            info_teksti = f"Jakeita (Alkup. / Suodatettu): **{alkuperainen_maara} / {suodatettu_maara}**"
         
         st.info(info_teksti)
         st.download_button("Lataa tiedostona (.txt)", data=lopputulos, file_name="lopputulos.txt")
