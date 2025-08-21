@@ -42,6 +42,8 @@ if 'token_count' not in st.session_state:
     st.session_state.token_count = {'input': 0, 'output': 0, 'total': 0}
 if 'daily_token_count' not in st.session_state:
     st.session_state.daily_token_count = {'input': 0, 'output': 0, 'total': 0}
+if 'show_token_counter' not in st.session_state:
+    st.session_state.show_token_counter = False
 
 
 # --- TAUSTA-FUNKTIOT ---
@@ -120,8 +122,6 @@ def etsi_viittaukset_tekstista(text, book_map, book_data_map):
 
     for match in matches:
         book_name_raw, chapter_str, verses_str = match
-        
-        # Puhdistetaan löydetty kirjan nimi ja varmistetaan, ettei se ole pelkkä numero
         book_key_raw = book_name_raw.strip().lower().replace('.', '').replace(' ', '')
         if not book_key_raw or not re.search(r'[a-zäö]', book_key_raw):
             continue
@@ -244,7 +244,7 @@ def tee_api_kutsu(prompt, malli, noudata_perusohjetta=True):
         return None
 
 def luo_sisallysluettelo(aihe, malli, noudata_perusohjetta):
-    prompt = f"Olet teologi. Luo yksityiskohtainen sisällysluettelo laajalle opetukselle aiheesta '{aihe}'."
+    prompt = f"Olet teologi. Luo yksityiskohtainen ja selkeä sisällysluettelo laajalle opetukselle aiheesta '{aihe}'. Rakenna looginen runko, jossa on pää- ja alakohtia. Vastaa AINOASTAAN numeroituna listana. ÄLÄ lisää omia kommenttejasi, aikarajoja tai lainauksia sisällysluetteloon."
     return tee_api_kutsu(prompt, malli, noudata_perusohjetta)
 
 def jarjestele_jakeet_osioihin(sisallysluettelo, jakeet, malli, noudata_perusohjetta):
@@ -288,7 +288,7 @@ st.set_page_config(page_title="Älykäs Raamattu-tutkija", layout="wide")
 if not st.session_state.password_correct:
     check_password()
 else:
-    st.title("📖 Älykäs Raamattu-tutkija v12.10")
+    st.title("📖 Älykäs Raamattu-tutkija v12.11")
     bible_data, book_map, book_name_map, book_data_map = lataa_raamattu()
     lataa_paivittainen_laskuri()
 
@@ -315,8 +315,8 @@ else:
             noudata_perusohjetta_luodessa = st.checkbox("Noudata teologista perusohjetta", value=True)
             
             st.divider()
-            show_counter = st.checkbox("Näytä kulutuslaskurit", key="show_token_counter")
-            if show_counter:
+            st.session_state.show_token_counter = st.checkbox("Näytä kulutuslaskurit", value=st.session_state.show_token_counter)
+            if st.session_state.show_token_counter:
                 st.subheader("Tämän session kulutus")
                 session_hinta = laske_kustannus_arvio(st.session_state.token_count, malli_valinta_ui)
                 st.metric(label="Tokenit", value=f"{st.session_state.token_count['total']:,}", help=f"Arvioidut kustannukset: {session_hinta}")
@@ -340,12 +340,12 @@ else:
                     st.write("Haetaan jakeita suoraan aihe-kuvauksesta...")
                     initial_refs = etsi_viittaukset_tekstista(aihe, book_map, book_data_map)
                     for ref in initial_refs:
-                        fetched_verses = hae_tarkka_viittaus(ref, book_map, book_name_map, jakeita_ennen, jakeita_jalkeen)
+                        fetched_verses = hae_tarkka_viittaus(ref, book_data_map, book_name_map, jakeita_ennen, jakeita_jalkeen)
                         for verse in fetched_verses:
                             kaikki_loydetyt_jakeet.add(verse)
                     
                     st.write("Tehdään tekoälypohjainen haku...")
-                    suunnitelma_prompt = f"Luo JSON-muodossa lista avainsanoista ('hakusanat') ja Raamatun kirjoista ('kirjat') aiheelle '{aihe}'. Etsi temaattisia yhteyksiä KOKO RAAMATUSTA, älä rajoitu vain aiheessa mainittuun kirjaan. ÄLÄ sisällytä vastaukseen Raamatun viittauksia, jotka ovat jo aiheessa."
+                    suunnitelma_prompt = f"Luo JSON-muodossa lista avainsanoista ('hakusanat') ja Raamatun kirjoista ('kirjat') aiheelle '{aihe}'. Jos aihe on tarkka jae (kuten 'Joh. 3:16'), rajoita ehdotetut kirjat pääasiassa samaan kirjaan ja muutamaan tärkeimpään temaattiseen rinnakkaispaikkaan. Jos aihe on laaja (kuten 'Rakkaus'), ehdota kirjoja laajasti koko Raamatusta. ÄLÄ sisällytä vastaukseen Raamatun viittauksia, jotka ovat jo aiheessa."
                     suunnitelma_str = tee_api_kutsu(suunnitelma_prompt, 'gemini-1.5-flash', noudata_perusohjetta_luodessa)
                     try: suunnitelma = json.loads(suunnitelma_str.strip().replace("```json", "").replace("```", ""))
                     except: suunnitelma = {"hakusanat": aihe.split(), "kirjat": []}
@@ -404,8 +404,8 @@ else:
             sanamaara = st.number_input("Tavoitesanamäärä (vain opetukselle)", min_value=300, max_value=20000, value=4000, step=100, key="sanamaara_valinta")
             
             st.divider()
-            show_counter_review = st.checkbox("Näytä kulutuslaskurit", key="show_token_counter")
-            if show_counter_review:
+            st.session_state.show_token_counter = st.checkbox("Näytä kulutuslaskurit", value=st.session_state.show_token_counter, key="show_token_counter_review")
+            if st.session_state.show_token_counter:
                 st.subheader("Tämän session kulutus")
                 session_hinta_rev = laske_kustannus_arvio(st.session_state.token_count, st.session_state.aineisto['malli'])
                 st.metric(label="Tokenit", value=f"{st.session_state.token_count['total']:,}", help=f"Arvioidut kustannukset: {session_hinta_rev}")
@@ -444,10 +444,9 @@ else:
                 if not missing:
                     st.session_state.missing_verses = None
                     st.session_state.step = 'output'
-                    st.rerun()
                 else:
                     st.session_state.missing_verses = missing
-                    st.rerun()
+                st.rerun()
 
     elif st.session_state.step == 'output':
         aineisto = st.session_state.aineisto
@@ -480,9 +479,9 @@ else:
                 aineisto['suodatettu_jaemaara'] = len(suodatetut_jakeet)
             else:
                 st.warning("Jakeiden automaattinen järjestely epäonnistui...")
-                aineisto['suodatettu_jaemaara'] = len(aineisto['jakeet'])
+                aineisto['suodatettu_jaemaara'] = 0 # Korjattu näyttämään 0 jos epäonnistuu
 
-        if aineisto['toimintatapa'] == "Valmis opetus (Optimoitu)":
+        if aineisto.get('toimintatapa') == "Valmis opetus (Optimoitu)":
             with st.status("Kirjoitetaan opetusta...", expanded=True) as status:
                 sisallysluettelo = [rivi.strip() for rivi in aineisto['sisallysluettelo'].split('\n') if rivi.strip()]
                 koko_opetus, osioiden_maara = [], len(sisallysluettelo)
@@ -498,7 +497,7 @@ else:
                 status.update(label="Opetus on valmis!", state="complete", expanded=False)
                 lopputulos = "".join(koko_opetus)
 
-        elif aineisto['toimintatapa'] == "Tutkimusraportti (Jatkojalostukseen)":
+        elif aineisto.get('toimintatapa') == "Tutkimusraportti (Jatkojalostukseen)":
             with st.spinner("Kootaan raporttia..."):
                 komentopohja = f"""
 Hei, tässä on app.py-tutkimusapurini tuottama raportti...
@@ -520,15 +519,13 @@ Kirjoita noin [TÄYTÄ TAVOITESANAMÄÄRÄ TÄHÄN] sanan mittainen opetus...
         st.header("Valmis tuotos")
         
         alkuperainen_maara = len(aineisto.get('jakeet', []))
-        suodatettu_maara = aineisto.get('suodatettu_jaemaara', alkuperainen_maara)
+        suodatettu_maara = aineisto.get('suodatettu_jaemaara', alkuperainen_maara) if jae_kartta else 0
 
+        info_teksti = f"Jakeita (Alkup. / Suodatettu): **{alkuperainen_maara} / {suodatettu_maara}**"
         if aineisto.get('toimintatapa') == "Valmis opetus (Optimoitu)":
             sanojen_maara = len(lopputulos.split())
-            info_teksti = f"Sanamäärä: **{sanojen_maara}** | Jakeita (Alkup. / Suodatettu): **{alkuperainen_maara} / {suodatettu_maara}**"
-        else:
-            info_teksti = f"Jakeita (Alkup. / Suodatettu): **{alkuperainen_maara} / {suodatettu_maara}**"
+            info_teksti = f"Sanamäärä: **{sanojen_maara}** | " + info_teksti
         
         st.info(info_teksti)
         st.download_button("Lataa tiedostona (.txt)", data=lopputulos, file_name="lopputulos.txt")
         st.text_area("Lopputulos:", value=lopputulos, height=600)
-
