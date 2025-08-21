@@ -288,7 +288,7 @@ st.set_page_config(page_title="Älykäs Raamattu-tutkija", layout="wide")
 if not st.session_state.password_correct:
     check_password()
 else:
-    st.title("📖 Älykäs Raamattu-tutkija v12.11")
+    st.title("📖 Älykäs Raamattu-tutkija v12.12")
     bible_data, book_map, book_name_map, book_data_map = lataa_raamattu()
     lataa_paivittainen_laskuri()
 
@@ -311,11 +311,11 @@ else:
             jakeita_ennen = st.slider("Jakeita ennen osumaa:", 0, 10, 0)
             jakeita_jalkeen = st.slider("Jakeita osuman jälkeen:", 0, 10, 0)
             st.subheader("Tekoälyn asetukset")
-            malli_valinta_ui = st.selectbox("Valitse Gemini-malli:", ('gemini-1.5-pro', 'gemini-1.5-flash'), index=1)
+            malli_valinta_ui = st.selectbox("Valitse Gemini-malli:", ('gemini-1.5-flash', 'gemini-1.5-pro'), index=0)
             noudata_perusohjetta_luodessa = st.checkbox("Noudata teologista perusohjetta", value=True)
             
             st.divider()
-            st.session_state.show_token_counter = st.checkbox("Näytä kulutuslaskurit", value=st.session_state.show_token_counter)
+            st.session_state.show_token_counter = st.checkbox("Näytä kulutuslaskurit", value=st.session_state.get('show_token_counter', False))
             if st.session_state.show_token_counter:
                 st.subheader("Tämän session kulutus")
                 session_hinta = laske_kustannus_arvio(st.session_state.token_count, malli_valinta_ui)
@@ -404,7 +404,7 @@ else:
             sanamaara = st.number_input("Tavoitesanamäärä (vain opetukselle)", min_value=300, max_value=20000, value=4000, step=100, key="sanamaara_valinta")
             
             st.divider()
-            st.session_state.show_token_counter = st.checkbox("Näytä kulutuslaskurit", value=st.session_state.show_token_counter, key="show_token_counter_review")
+            st.session_state.show_token_counter = st.checkbox("Näytä kulutuslaskurit", value=st.session_state.get('show_token_counter', False))
             if st.session_state.show_token_counter:
                 st.subheader("Tämän session kulutus")
                 session_hinta_rev = laske_kustannus_arvio(st.session_state.token_count, st.session_state.aineisto['malli'])
@@ -462,13 +462,14 @@ else:
                 st.rerun()
             
             st.divider()
-            st.subheader("Tämän session kulutus")
-            session_hinta_out = laske_kustannus_arvio(st.session_state.token_count, st.session_state.aineisto['malli'])
-            st.metric(label="Tokenit", value=f"{st.session_state.token_count['total']:,}", help=f"Arvioidut kustannukset: {session_hinta_out}")
+            if st.session_state.show_token_counter:
+                st.subheader("Tämän session kulutus")
+                session_hinta_out = laske_kustannus_arvio(st.session_state.token_count, st.session_state.aineisto['malli'])
+                st.metric(label="Tokenit", value=f"{st.session_state.token_count['total']:,}", help=f"Arvioidut kustannukset: {session_hinta_out}")
 
-            st.subheader(f"Päivän {date.today()} kulutus")
-            daily_hinta_out = laske_kustannus_arvio(st.session_state.daily_token_count, st.session_state.aineisto['malli'])
-            st.metric(label="Tokenit yhteensä", value=f"{st.session_state.daily_token_count['total']:,}", help=f"Arvioidut kustannukset: {daily_hinta_out}")
+                st.subheader(f"Päivän {date.today()} kulutus")
+                daily_hinta_out = laske_kustannus_arvio(st.session_state.daily_token_count, st.session_state.aineisto['malli'])
+                st.metric(label="Tokenit yhteensä", value=f"{st.session_state.daily_token_count['total']:,}", help=f"Arvioidut kustannukset: {daily_hinta_out}")
             st.divider()
 
         with st.spinner("Järjestellään ja suodatetaan jakeita..."):
@@ -479,7 +480,7 @@ else:
                 aineisto['suodatettu_jaemaara'] = len(suodatetut_jakeet)
             else:
                 st.warning("Jakeiden automaattinen järjestely epäonnistui...")
-                aineisto['suodatettu_jaemaara'] = 0 # Korjattu näyttämään 0 jos epäonnistuu
+                aineisto['suodatettu_jaemaara'] = 0
 
         if aineisto.get('toimintatapa') == "Valmis opetus (Optimoitu)":
             with st.status("Kirjoitetaan opetusta...", expanded=True) as status:
@@ -519,10 +520,10 @@ Kirjoita noin [TÄYTÄ TAVOITESANAMÄÄRÄ TÄHÄN] sanan mittainen opetus...
         st.header("Valmis tuotos")
         
         alkuperainen_maara = len(aineisto.get('jakeet', []))
-        suodatettu_maara = aineisto.get('suodatettu_jaemaara', alkuperainen_maara) if jae_kartta else 0
+        suodatettu_maara = aineisto.get('suodatettu_jaemaara', 0)
 
         info_teksti = f"Jakeita (Alkup. / Suodatettu): **{alkuperainen_maara} / {suodatettu_maara}**"
-        if aineisto.get('toimintatapa') == "Valmis opetus (Optimoitu)":
+        if aineisto.get('toimintatapa') == "Valmis opetus (Optimoitu)" and lopputulos:
             sanojen_maara = len(lopputulos.split())
             info_teksti = f"Sanamäärä: **{sanojen_maara}** | " + info_teksti
         
