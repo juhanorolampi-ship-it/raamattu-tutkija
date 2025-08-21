@@ -66,7 +66,6 @@ def lataa_raamattu(tiedostonimi="bible.json"):
                 if key: book_map[key] = target
     return bible_data, book_map, book_name_map, book_data_map
 
-# --- UUTTA V12.9: Päivittäisen laskurin luku ja tallennus ---
 LOG_FILE = "cost_log.json"
 
 def lataa_paivittainen_laskuri():
@@ -80,30 +79,22 @@ def lataa_paivittainen_laskuri():
     if today_str in log_data:
         st.session_state.daily_token_count = log_data[today_str]
     else:
-        # Aloitetaan uusi päivä
         st.session_state.daily_token_count = {'input': 0, 'output': 0, 'total': 0}
-        # Puhdistetaan vanhat lokitiedot, jos halutaan
         log_data = {today_str: st.session_state.daily_token_count}
         with open(LOG_FILE, "w") as f:
             json.dump(log_data, f)
 
 def tallenna_paivittainen_laskuri(new_input, new_output):
     today_str = str(date.today())
-    
-    # Päivitetään ensin päivittäinen kokonaismäärä
     st.session_state.daily_token_count['input'] += new_input
     st.session_state.daily_token_count['output'] += new_output
     st.session_state.daily_token_count['total'] += (new_input + new_output)
-
-    # Luetaan vanha data, päivitetään ja tallennetaan
     try:
         with open(LOG_FILE, "r") as f:
             log_data = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         log_data = {}
-    
     log_data[today_str] = st.session_state.daily_token_count
-    
     with open(LOG_FILE, "w") as f:
         json.dump(log_data, f, indent=4)
 
@@ -124,13 +115,16 @@ def etsi_viittaukset_tekstista(text, book_map, book_data_map):
     cleaned_text = re.sub(r'[()\[\]]', ' ', text)
     all_references = []
     sorted_book_keys = sorted(book_map.keys(), key=len, reverse=True)
-    pattern = re.compile(r'((?:\d\.\s)?[A-Za-zäöÄÖ][A-Za-zäöÄÖ\s\.]*?)\s+(\d+)(?::([\d\s,-]+))?', re.IGNORECASE)
+    pattern = re.compile(r'((?:\d\.\s)?[A-Za-zäöÄÖ\s]+?)\s+(\d+)(?::([\d\s,-]+))?', re.IGNORECASE)
     matches = pattern.findall(cleaned_text)
 
     for match in matches:
         book_name_raw, chapter_str, verses_str = match
+        
+        # Puhdistetaan löydetty kirjan nimi ja varmistetaan, ettei se ole pelkkä numero
         book_key_raw = book_name_raw.strip().lower().replace('.', '').replace(' ', '')
-        if not book_key_raw: continue
+        if not book_key_raw or not re.search(r'[a-zäö]', book_key_raw):
+            continue
 
         found_key = None
         for key in sorted_book_keys:
@@ -237,12 +231,10 @@ def tee_api_kutsu(prompt, malli, noudata_perusohjetta=True):
             input_tokens = usage.prompt_token_count
             output_tokens = usage.candidates_token_count
             
-            # Päivitetään session laskuri
             st.session_state.token_count['input'] += input_tokens
             st.session_state.token_count['output'] += output_tokens
             st.session_state.token_count['total'] += (input_tokens + output_tokens)
             
-            # Päivitetään ja tallennetaan päivittäinen laskuri
             tallenna_paivittainen_laskuri(input_tokens, output_tokens)
         
         time.sleep(1) 
@@ -252,12 +244,12 @@ def tee_api_kutsu(prompt, malli, noudata_perusohjetta=True):
         return None
 
 def luo_sisallysluettelo(aihe, malli, noudata_perusohjetta):
-    prompt = f"Olet teologi. Luo yksityiskohtainen sisällysluettelo laajalle opetukselle aiheesta '{aihe}'. Rakenna runko, jossa on johdanto, 3-5 pääkohtaa ja jokaiseen 2-4 alakohtaa, sekä yhteenveto. Vastaa AINOASTAAN numeroituna listana."
+    prompt = f"Olet teologi. Luo yksityiskohtainen sisällysluettelo laajalle opetukselle aiheesta '{aihe}'."
     return tee_api_kutsu(prompt, malli, noudata_perusohjetta)
 
 def jarjestele_jakeet_osioihin(sisallysluettelo, jakeet, malli, noudata_perusohjetta):
     jae_teksti = "\n".join(jakeet)
-    prompt = f"Järjestele annetut Raamatun jakeet opetuksen sisällysluettelon mukaisiin osioihin..."
+    prompt = f"Järjestele annetut Raamatun jakeet opetuksen sisällysluettelon mukaisiin osioihin. SISÄLLYSLUETTELO:\n{sisallysluettelo}\n\nLÖYDETYT JAKEET:\n{jae_teksti}\n\nVastaa AINOASTAAN JSON-muodossa..."
     vastaus_str = tee_api_kutsu(prompt, malli, noudata_perusohjetta)
     try:
         cleaned_response = vastaus_str.strip().replace("```json", "").replace("```", "")
@@ -296,10 +288,8 @@ st.set_page_config(page_title="Älykäs Raamattu-tutkija", layout="wide")
 if not st.session_state.password_correct:
     check_password()
 else:
-    st.title("📖 Älykäs Raamattu-tutkija v12.9")
+    st.title("📖 Älykäs Raamattu-tutkija v12.10")
     bible_data, book_map, book_name_map, book_data_map = lataa_raamattu()
-
-    # Ladataan päivän laskuri heti alussa
     lataa_paivittainen_laskuri()
 
     try:
@@ -315,17 +305,17 @@ else:
     if st.session_state.step == 'input':
         with st.sidebar:
             st.header("Asetukset")
-            aihe = st.text_area("Mikä on opetuksen aihe?", "Jumalan kutsu", height=150)
+            aihe = st.text_area("Mikä on opetuksen aihe?", "Mitä Johannes 3:16 meille opettaa?", height=150)
             ladatut_tiedostot = st.file_uploader("Lataa lisämateriaalia", type=['txt', 'pdf', 'docx'], accept_multiple_files=True)
             st.subheader("Haun asetukset")
-            jakeita_ennen = st.slider("Jakeita ennen osumaa:", 0, 10, 1)
-            jakeita_jalkeen = st.slider("Jakeita osuman jälkeen:", 0, 10, 2)
+            jakeita_ennen = st.slider("Jakeita ennen osumaa:", 0, 10, 0)
+            jakeita_jalkeen = st.slider("Jakeita osuman jälkeen:", 0, 10, 0)
             st.subheader("Tekoälyn asetukset")
-            malli_valinta_ui = st.selectbox("Valitse Gemini-malli:", ('gemini-1.5-pro', 'gemini-1.5-flash'))
+            malli_valinta_ui = st.selectbox("Valitse Gemini-malli:", ('gemini-1.5-pro', 'gemini-1.5-flash'), index=1)
             noudata_perusohjetta_luodessa = st.checkbox("Noudata teologista perusohjetta", value=True)
             
             st.divider()
-            show_counter = st.checkbox("Näytä kulutuslaskurit")
+            show_counter = st.checkbox("Näytä kulutuslaskurit", key="show_token_counter")
             if show_counter:
                 st.subheader("Tämän session kulutus")
                 session_hinta = laske_kustannus_arvio(st.session_state.token_count, malli_valinta_ui)
@@ -343,7 +333,6 @@ else:
                         'aihe': aihe, 'malli': malli_valinta_ui, 'noudata_ohjetta': noudata_perusohjetta_luodessa,
                         'jakeita_ennen': jakeita_ennen, 'jakeita_jalkeen': jakeita_jalkeen
                     }
-                    # ... (loput koodista ennallaan)
                     lisamateriaalit = [lue_ladattu_tiedosto(tiedosto) for tiedosto in ladatut_tiedostot] if ladatut_tiedostot else []
                     st.session_state.aineisto['lisamateriaali'] = "\n\n---\n\n".join(lisamateriaalit)
                     kaikki_loydetyt_jakeet = set()
@@ -351,12 +340,12 @@ else:
                     st.write("Haetaan jakeita suoraan aihe-kuvauksesta...")
                     initial_refs = etsi_viittaukset_tekstista(aihe, book_map, book_data_map)
                     for ref in initial_refs:
-                        fetched_verses = hae_tarkka_viittaus(ref, book_data_map, book_name_map, jakeita_ennen, jakeita_jalkeen)
+                        fetched_verses = hae_tarkka_viittaus(ref, book_map, book_name_map, jakeita_ennen, jakeita_jalkeen)
                         for verse in fetched_verses:
                             kaikki_loydetyt_jakeet.add(verse)
                     
                     st.write("Tehdään tekoälypohjainen haku...")
-                    suunnitelma_prompt = f"Luo JSON-muodossa lista avainsanoista ('hakusanat') ja Raamatun kirjoista ('kirjat') aiheelle '{aihe}'."
+                    suunnitelma_prompt = f"Luo JSON-muodossa lista avainsanoista ('hakusanat') ja Raamatun kirjoista ('kirjat') aiheelle '{aihe}'. Etsi temaattisia yhteyksiä KOKO RAAMATUSTA, älä rajoitu vain aiheessa mainittuun kirjaan. ÄLÄ sisällytä vastaukseen Raamatun viittauksia, jotka ovat jo aiheessa."
                     suunnitelma_str = tee_api_kutsu(suunnitelma_prompt, 'gemini-1.5-flash', noudata_perusohjetta_luodessa)
                     try: suunnitelma = json.loads(suunnitelma_str.strip().replace("```json", "").replace("```", ""))
                     except: suunnitelma = {"hakusanat": aihe.split(), "kirjat": []}
@@ -415,7 +404,7 @@ else:
             sanamaara = st.number_input("Tavoitesanamäärä (vain opetukselle)", min_value=300, max_value=20000, value=4000, step=100, key="sanamaara_valinta")
             
             st.divider()
-            show_counter_review = st.checkbox("Näytä kulutuslaskurit", key="show_counter_review")
+            show_counter_review = st.checkbox("Näytä kulutuslaskurit", key="show_token_counter")
             if show_counter_review:
                 st.subheader("Tämän session kulutus")
                 session_hinta_rev = laske_kustannus_arvio(st.session_state.token_count, st.session_state.aineisto['malli'])
@@ -511,7 +500,21 @@ else:
 
         elif aineisto['toimintatapa'] == "Tutkimusraportti (Jatkojalostukseen)":
             with st.spinner("Kootaan raporttia..."):
-                komentopohja = f"""...""" # Sisältö ennallaan
+                komentopohja = f"""
+Hei, tässä on app.py-tutkimusapurini tuottama raportti...
+---
+AIHE:
+{aineisto['aihe']}
+---
+SISÄLLYSLUETTELO, JOTA TULEE NOUDATTAA:
+{aineisto['sisallysluettelo']}
+---
+LÄHDEMATERIAALI (AINOAT SALLITUT JAKEET):
+{"\n".join(aineisto['jakeet'])}
+---
+LISÄOHJEET:
+Kirjoita noin [TÄYTÄ TAVOITESANAMÄÄRÄ TÄHÄN] sanan mittainen opetus...
+"""
                 lopputulos = komentopohja
 
         st.header("Valmis tuotos")
@@ -528,3 +531,4 @@ else:
         st.info(info_teksti)
         st.download_button("Lataa tiedostona (.txt)", data=lopputulos, file_name="lopputulos.txt")
         st.text_area("Lopputulos:", value=lopputulos, height=600)
+
