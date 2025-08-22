@@ -127,31 +127,44 @@ def laske_kustannus_arvio(token_count, model_name):
     total_cost_eur = (input_cost_usd + output_cost_usd) * USD_TO_EUR
     return f"~{total_cost_eur:.4f} €"
 
+# ==============================================================================
+# LOPULLINEN, VANKKA VIITTAUSTEN TUNNISTUS (v13.4)
+# ==============================================================================
 def etsi_viittaukset_tekstista(text, book_map, book_data_map):
+    # Luodaan dynaaminen ja erittäin tarkka regex-pattern kaikista tunnetuista kirjojen nimistä.
+    # Järjestys pisimmästä lyhimpään on elintärkeä, jotta "1. Johanneksen kirje" tunnistetaan ennen "Joh".
+    sorted_book_keys = sorted(book_map.keys(), key=len, reverse=True)
+    
+    # Poistetaan avaimista regexille haitalliset merkit ja yhdistetään ne '|'-merkillä (TAI)
+    # Tämä etsii TÄSMÄLLEEN näitä nimiä, eikä mitään muuta.
+    book_names_pattern = '|'.join(re.escape(key.replace('.', '')) for key in sorted_book_keys if len(key) > 1)
+
+    # Tämä on uusi, paljon luotettavampi pattern.
+    # \b varmistaa, että tunnistus osuu kokonaisiin sanoihin.
+    pattern = re.compile(
+        r'\b(' + book_names_pattern + r')\.?\s+(\d+)(?:[:\s]([\d\s,-]+))?', 
+        re.IGNORECASE
+    )
+
     all_references = []
-    # KORJATTU PATTERN: Hyväksyy sekä "Luku:Jae" että "Luku Jae" -muodot
-    pattern = re.compile(r'((?:\d\.\s*)?[A-Za-zäöÄÖ\s]+?)\s+(\d+)(?:[:\s]([\d\s,-]+))?', re.IGNORECASE)
     matches = pattern.findall(text)
 
     for match in matches:
-        book_candidate, chapter_str, verses_str = match
-        book_candidate_clean = book_candidate.strip().lower().replace('.', '').replace(' ', '')
+        book_name_raw, chapter_str, verses_str = match
         
-        found_key = None
-        for key in book_map.keys():
-            if book_candidate_clean.endswith(key):
-                found_key = key
-                break
+        # Puhdistetaan ja normalisoidaan löydetty kirjan nimi avaimeksi
+        book_key = book_name_raw.lower().replace('.', '').replace(' ', '')
         
-        if found_key:
-            book_id, content = book_map[found_key]
-            book_proper_name = content['info'].get('name', book_candidate.strip())
+        if book_key in book_map:
+            book_id, content = book_map[book_key]
+            book_proper_name = content['info'].get('name', book_name_raw.strip())
             
             if verses_str:
                 verse_parts = verses_str.split(',')
                 for verse_part in verse_parts:
                     verse_part = verse_part.strip()
                     if not verse_part: continue
+                    
                     start_verse, end_verse = 0, 0
                     if '-' in verse_part:
                         try: start_verse, end_verse = map(int, verse_part.split('-'))
@@ -161,11 +174,12 @@ def etsi_viittaukset_tekstista(text, book_map, book_data_map):
                         except ValueError: continue
                     
                     all_references.append({"book_id": book_id, "book_name": book_proper_name, "chapter": int(chapter_str), "start_verse": start_verse, "end_verse": end_verse, "original_match": f"{book_proper_name} {chapter_str}:{start_verse}" + (f"-{end_verse}" if start_verse != end_verse else "")})
-            else:
+            else: # Jos jakeita ei ole määritelty, haetaan koko luku
                 try:
                     last_verse_num = len(book_data_map[book_id]['chapter'][chapter_str]['verse'])
                     all_references.append({"book_id": book_id, "book_name": book_proper_name, "chapter": int(chapter_str), "start_verse": 1, "end_verse": last_verse_num, "original_match": f"{book_proper_name} {chapter_str}"})
                 except KeyError: continue
+                    
     return all_references
 
 
@@ -353,7 +367,7 @@ st.set_page_config(page_title="Älykäs Raamattu-tutkija", layout="wide")
 if not st.session_state.password_correct:
     check_password()
 else:
-    st.title("📖 Älykäs Raamattu-tutkija v13.3")
+    st.title("📖 Älykäs Raamattu-tutkija v13.4")
     # Ladataan nyt myös kanoninen kirjalista
     bible_data, book_map, book_name_map, book_data_map, canonical_book_names = lataa_raamattu()
     lataa_paivittainen_laskuri()
