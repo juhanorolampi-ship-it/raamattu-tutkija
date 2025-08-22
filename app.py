@@ -9,7 +9,7 @@ import io
 from datetime import date
 
 # ==============================================================================
-# API-avaimen käsittely ja perusasetukset
+# API-avaimen käsittely ja perusasetukset (Tässä on testimuutos)
 # ==============================================================================
 TEOLOGINEN_PERUSOHJE = """
 TÄRKEÄ PERUSOHJE: Olet teologinen assistentti, jonka ainoa ja tärkein tehtävä on auttaa käyttäjää ymmärtämään annettua Raamatun tekstiä sen omassa kontekstissa ja Raamatun kokonaisilmoituksen valossa.
