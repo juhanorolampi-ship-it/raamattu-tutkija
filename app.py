@@ -287,7 +287,18 @@ Luo nyt yksityiskohtainen, numeroitu sisällysluettelo annettujen sääntöjen j
 
 def jarjestele_jakeet_osioihin(sisallysluettelo, jakeet, malli, noudata_perusohjetta):
     jae_teksti = "\n".join(jakeet)
-    prompt = f"Järjestele annetut Raamatun jakeet opetuksen sisällysluettelon mukaisiin osioihin. SISÄLLYSLUETTELO:\n{sisallysluettelo}\n\nLÖYDETYT JAKEET:\n{jae_teksti}\n\nVastaa AINOASTAAN JSON-muodossa, jossa avaimet ovat sisällysluettelon täsmällisiä otsikoita ja arvot ovat listoja kyseiseen osioon kuuluvista jakeista merkkijonoina. Älä muuta jakeiden muotoilua."
+    # UUSI, ROBUSTIMPI PROMPT: Käytetään numeroita avaimina JSON-vastauksessa
+    prompt = f"""Järjestele annetut Raamatun jakeet opetuksen sisällysluettelon mukaisiin osioihin.
+
+SISÄLLYSLUETTELO:
+{sisallysluettelo}
+
+LÖYDETYT JAKEET:
+{jae_teksti}
+
+VASTAA AINOASTAAN JSON-muodossa. Käytä JSON-objektin avaimina AINOASTAAN sisällysluettelon PÄÄNUMEROITA (esim. "1", "2", "3"). Arvojen tulee olla listoja jakeista, jotka kuuluvat kyseiseen osioon.
+Esimerkki vastauksesta: {{ "1": ["Joh. 1:1 - ..."], "2": ["1. Moos. 1:1 - ...", "Room. 5:8 - ..."] }}
+"""
     vastaus_str = tee_api_kutsu(prompt, malli, noudata_perusohjetta)
     try:
         cleaned_response = vastaus_str.strip().replace("```json", "").replace("```", "")
@@ -525,6 +536,9 @@ else:
             with st.expander(f"Näytä {len(st.session_state.aineisto.get('jakeet', []))} kerättyä jaetta"):
                 st.text_area("Kerätty lähdemateriaali:", value="\n".join(st.session_state.aineisto.get('jakeet', [])), height=300, key="jakeet_naytto")
 
+    # ==============================================================================
+    # VAIHE 4: LOPPUTULOS (PÄIVITETTY JAKEIDEN HAKULOGIIKKA)
+    # ==============================================================================
     elif st.session_state.step == 'output':
         st.header("4. Valmis tuotos")
         aineisto = st.session_state.aineisto
@@ -539,12 +553,23 @@ else:
                 reset_session()
             st.divider()
             if st.session_state.show_token_counter:
-                # ... kulutuslaskurit ...
-                pass
+                st.subheader("Session kulutus")
+                session_hinta_out = laske_kustannus_arvio(st.session_state.token_count, st.session_state.aineisto['malli'])
+                st.metric(label="Tokenit", value=f"{st.session_state.token_count['total']:,}", help=f"Arvioidut kustannukset: {session_hinta_out}")
+
+                st.subheader(f"Päivän kulutus")
+                daily_hinta_out = laske_kustannus_arvio(st.session_state.daily_token_count, st.session_state.aineisto['malli'])
+                st.metric(label="Tokenit yhteensä", value=f"{st.session_state.daily_token_count['total']:,}", help=f"Arvioidut kustannukset: {daily_hinta_out}")
         
         with st.spinner("Järjestellään jakeita osioihin..."):
             jae_kartta = jarjestele_jakeet_osioihin(aineisto['sisallysluettelo'], aineisto['jakeet'], aineisto['malli'], aineisto['noudata_ohjetta'])
-            aineisto['suodatettu_jaemaara'] = len({jae for jae_list in jae_kartta.values() for jae in jae_list}) if jae_kartta else 0
+            
+            if jae_kartta:
+                suodatetut_jakeet = {jae for jakeet_listassa in jae_kartta.values() for jae in jakeet_listassa}
+                aineisto['suodatettu_jaemaara'] = len(suodatetut_jakeet)
+            else:
+                st.warning("Jakeiden automaattinen järjestely osioihin ei onnistunut. Tekoäly ei palauttanut kelvollista JSON-muotoa. Kaikki jakeet käytetään jokaiseen osioon.")
+                aineisto['suodatettu_jaemaara'] = 0
 
         if aineisto.get('toimintatapa') == "Valmis opetus (Optimoitu)":
             with st.status("Kirjoitetaan opetusta...", expanded=True) as status:
@@ -554,8 +579,12 @@ else:
                 
                 for i, otsikko in enumerate(sisallysluettelo_rivit):
                     status.write(f"Kirjoitetaan osiota {i+1}/{osioiden_maara}: {otsikko}...")
+                    
+                    # UUSI LOGIIKKA: Hae avaimella, joka on osion päänumero merkkijonona
+                    osion_numero = otsikko.split('.')[0]
+                    relevantit_jakeet = jae_kartta.get(osion_numero, []) if jae_kartta else aineisto['jakeet']
+                    
                     puhdas_otsikko = re.sub(r'^\d+(\.\d+)*\s*\.?\s*', '', otsikko)
-                    relevantit_jakeet = jae_kartta.get(otsikko, []) if jae_kartta else aineisto['jakeet']
                     osio_teksti = kirjoita_osio(aineisto['aihe'], puhdas_otsikko, relevantit_jakeet, aineisto['lisamateriaali'], sanamaara_per_osio, aineisto['malli'], aineisto['noudata_ohjetta'])
                     if osio_teksti:
                         koko_opetus.append(f"### {otsikko}\n\n{osio_teksti}\n\n")
