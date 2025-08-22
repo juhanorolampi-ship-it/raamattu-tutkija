@@ -114,47 +114,79 @@ def laske_kustannus_arvio(token_count, model_name):
     return f"~{total_cost_eur:.4f} €"
 
 def etsi_viittaukset_tekstista(text, book_map, book_data_map):
-    cleaned_text = re.sub(r'[()\[\]]', ' ', text)
-    all_references = []
+    # Luodaan dynaaminen regex-pattern kaikista tunnetuista kirjojen nimistä ja lyhenteistä.
+    # Järjestetään avaimet pituuden mukaan laskevasti, jotta "1. Johanneksen kirje" tunnistetaan ennen "Joh"
     sorted_book_keys = sorted(book_map.keys(), key=len, reverse=True)
-    pattern = re.compile(r'((?:\d\.\s)?[A-Za-zäöÄÖ\s]+?)\s+(\d+)(?::([\d\s,-]+))?', re.IGNORECASE)
-    matches = pattern.findall(cleaned_text)
+    
+    # Poistetaan avaimista regexille haitalliset merkit ja luodaan 'TAI'-lista (|)
+    book_names_pattern = '|'.join(re.escape(key.replace('.', '')) for key in sorted_book_keys if len(key) > 1)
+
+    # Tämä on uusi, paljon luotettavampi pattern.
+    # Se etsii TÄSMÄLLEEN tunnettuja kirjan nimiä, ei mitä tahansa tekstinpätkää.
+    # \b varmistaa, että tunnistus osuu kokonaisiin sanoihin.
+    pattern = re.compile(
+        r'\b(' + book_names_pattern + r')\.?\s+(\d+)(?::([\d\s,-]+))?', 
+        re.IGNORECASE
+    )
+
+    all_references = []
+    # Etsitään osumia käyttäjän antamasta tekstistä
+    matches = pattern.findall(text)
 
     for match in matches:
         book_name_raw, chapter_str, verses_str = match
-        book_key_raw = book_name_raw.strip().lower().replace('.', '').replace(' ', '')
-        if not book_key_raw or not re.search(r'[a-zäö]', book_key_raw):
-            continue
-
-        found_key = None
-        for key in sorted_book_keys:
-            if key.startswith(book_key_raw):
-                found_key = key
-                break
         
-        if found_key:
-            book_id, content = book_map[found_key]
+        # Puhdistetaan ja normalisoidaan löydetty kirjan nimi avaimeksi
+        book_key = book_name_raw.lower().replace('.', '').replace(' ', '')
+        
+        # Haetaan kirjan tiedot book_mapista
+        if book_key in book_map:
+            book_id, content = book_map[book_key]
             book_proper_name = content['info'].get('name', book_name_raw.strip())
             
             if verses_str:
+                # Käsitellään jakeet, jotka on eroteltu pilkulla (esim. 1,5-7)
                 verse_parts = verses_str.split(',')
                 for verse_part in verse_parts:
                     verse_part = verse_part.strip()
                     if not verse_part: continue
+                    
                     start_verse, end_verse = 0, 0
                     if '-' in verse_part:
-                        try: start_verse, end_verse = map(int, verse_part.split('-'))
-                        except ValueError: continue
+                        try:
+                            start_verse, end_verse = map(int, verse_part.split('-'))
+                        except ValueError:
+                            continue
                     else:
-                        try: start_verse = end_verse = int(verse_part)
-                        except ValueError: continue
+                        try:
+                            start_verse = end_verse = int(verse_part)
+                        except ValueError:
+                            continue
                     
-                    all_references.append({"book_id": book_id, "book_name": book_proper_name, "chapter": int(chapter_str), "start_verse": start_verse, "end_verse": end_verse, "original_match": f"{book_proper_name} {chapter_str}:{start_verse}" + (f"-{end_verse}" if start_verse != end_verse else "")})
+                    all_references.append({
+                        "book_id": book_id, 
+                        "book_name": book_proper_name, 
+                        "chapter": int(chapter_str), 
+                        "start_verse": start_verse, 
+                        "end_verse": end_verse, 
+                        "original_match": f"{book_proper_name} {chapter_str}:{start_verse}" + (f"-{end_verse}" if start_verse != end_verse else "")
+                    })
             else:
+                # Jos jakeita ei ole määritelty, haetaan koko luku
                 try:
                     last_verse_num = len(book_data_map[book_id]['chapter'][chapter_str]['verse'])
-                    all_references.append({"book_id": book_id, "book_name": book_proper_name, "chapter": int(chapter_str), "start_verse": 1, "end_verse": last_verse_num, "original_match": f"{book_proper_name} {chapter_str}"})
-                except KeyError: continue
+                    all_references.append({
+                        "book_id": book_id, 
+                        "book_name": book_proper_name, 
+                        "chapter": int(chapter_str), 
+                        "start_verse": 1, 
+                        "end_verse": last_verse_num, 
+                        "original_match": f"{book_proper_name} {chapter_str}"
+                    })
+                except KeyError:
+                    # Luku ei ollut validi, ohitetaan
+                    continue
+                    
     return all_references
 
 def hae_tarkka_viittaus(ref, book_data_map, book_name_map, ennen, jalkeen):
@@ -530,3 +562,4 @@ Kirjoita noin [TÄYTÄ TAVOITESANAMÄÄRÄ TÄHÄN] sanan mittainen opetus...
         st.info(info_teksti)
         st.download_button("Lataa tiedostona (.txt)", data=lopputulos, file_name="lopputulos.txt")
         st.text_area("Lopputulos:", value=lopputulos, height=600)
+
