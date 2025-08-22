@@ -129,7 +129,8 @@ def laske_kustannus_arvio(token_count, model_name):
 
 def etsi_viittaukset_tekstista(text, book_map, book_data_map):
     all_references = []
-    pattern = re.compile(r'((?:\d\.\s*)?[A-Za-zäöÄÖ\s]+?)\s+(\d+)(?::([\d\s,-]+))?', re.IGNORECASE)
+    # KORJATTU PATTERN: Hyväksyy sekä "Luku:Jae" että "Luku Jae" -muodot
+    pattern = re.compile(r'((?:\d\.\s*)?[A-Za-zäöÄÖ\s]+?)\s+(\d+)(?:[:\s]([\d\s,-]+))?', re.IGNORECASE)
     matches = pattern.findall(text)
 
     for match in matches:
@@ -287,8 +288,8 @@ Luo nyt yksityiskohtainen, numeroitu sisällysluettelo annettujen sääntöjen j
 
 def jarjestele_jakeet_osioihin(sisallysluettelo, jakeet, malli, noudata_perusohjetta):
     jae_teksti = "\n".join(jakeet)
-    # UUSI, ROBUSTIMPI PROMPT: Käytetään numeroita avaimina JSON-vastauksessa
-    prompt = f"""Järjestele annetut Raamatun jakeet opetuksen sisällysluettelon mukaisiin osioihin.
+    # KORJATTU PROMPT: Käskee tekoälyä käsittelemään myös alakohdat oikein
+    prompt = f"""Tehtäväsi on järjestellä Raamatun jakeet sisällysluettelon osioiden alle.
 
 SISÄLLYSLUETTELO:
 {sisallysluettelo}
@@ -296,8 +297,13 @@ SISÄLLYSLUETTELO:
 LÖYDETYT JAKEET:
 {jae_teksti}
 
-VASTAA AINOASTAAN JSON-muodossa. Käytä JSON-objektin avaimina AINOASTAAN sisällysluettelon PÄÄNUMEROITA (esim. "1", "2", "3"). Arvojen tulee olla listoja jakeista, jotka kuuluvat kyseiseen osioon.
-Esimerkki vastauksesta: {{ "1": ["Joh. 1:1 - ..."], "2": ["1. Moos. 1:1 - ...", "Room. 5:8 - ..."] }}
+OHJEET VASTAUSTA VARTEN:
+1.  Vastaa AINOASTAAN JSON-muodossa.
+2.  Käytä JSON-avaimina AINOASTAAN sisällysluettelon PÄÄNUMEROITA (esim. "1", "2", "3").
+3.  Jos sisällysluettelossa on alakohtia (esim. "1.1", "1.2"), sijoita niihin kuuluvat jakeet niiden pääkohdan avaimen alle (esim. kaikki jakeet kohtiin 1, 1.1 ja 1.2 tulevat avaimen "1" alle).
+4.  Jokainen jae tulee sijoittaa vähintään yhteen osioon.
+
+Esimerkki vastauksesta: {{ "1": ["Joh. 1:1 - ...", "Room. 3:23 - ..."], "2": ["1. Moos. 1:1 - ..."] }}
 """
     vastaus_str = tee_api_kutsu(prompt, malli, noudata_perusohjetta)
     try:
@@ -347,7 +353,7 @@ st.set_page_config(page_title="Älykäs Raamattu-tutkija", layout="wide")
 if not st.session_state.password_correct:
     check_password()
 else:
-    st.title("📖 Älykäs Raamattu-tutkija v13.2")
+    st.title("📖 Älykäs Raamattu-tutkija v13.3")
     # Ladataan nyt myös kanoninen kirjalista
     bible_data, book_map, book_name_map, book_data_map, canonical_book_names = lataa_raamattu()
     lataa_paivittainen_laskuri()
