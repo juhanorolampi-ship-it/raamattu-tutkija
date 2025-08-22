@@ -310,7 +310,7 @@ st.set_page_config(page_title="Älykäs Raamattu-tutkija", layout="wide")
 if not st.session_state.password_correct:
     check_password()
 else:
-    st.title("📖 Älykäs Raamattu-tutkija v13.0")
+    st.title("📖 Älykäs Raamattu-tutkija v13.1")
     bible_data, book_map, book_name_map, book_data_map = lataa_raamattu()
     lataa_paivittainen_laskuri()
 
@@ -374,8 +374,8 @@ else:
                 st.session_state.step = 'plan_review'
                 st.rerun()
 
-    # ==============================================================================
-    # UUSI VAIHE: TUTKIMUSSUUNNITELMAN TARKISTUS
+# ==============================================================================
+    # UUSI VAIHE: TUTKIMUSSUUNNITELMAN TARKISTUS (KORJATTU v13.1)
     # ==============================================================================
     elif st.session_state.step == 'plan_review':
         st.header("2. Määritä tutkimussuunnitelma")
@@ -399,9 +399,24 @@ else:
                                          height=300)
         with col2:
             kaikki_kirjat = sorted(list(book_name_map.values()))
+            
+            # --- TÄSSÄ ON KORJAUS ---
+            # Käännetään tekoälyn ehdottamat nimet (jotka voivat olla lyhenteitä)
+            # täsmällisiksi nimiksi, joita multiselect-widget odottaa.
+            ai_suggested_books = st.session_state.aineisto.get('kirjat', [])
+            default_books = []
+            for book_suggestion in ai_suggested_books:
+                key = book_suggestion.lower().replace('.', '').replace(' ', '')
+                if key in book_map:
+                    book_id, _ = book_map[key]
+                    proper_name = book_name_map.get(book_id)
+                    if proper_name and proper_name in kaikki_kirjat:
+                        default_books.append(proper_name)
+            # --- KORJAUKSEN LOPPU ---
+
             valitut_kirjat = st.multiselect("Raamatun kirjat", 
                                             options=kaikki_kirjat, 
-                                            default=st.session_state.aineisto.get('kirjat', []))
+                                            default=default_books) # Käytetään nyt käännettyä listaa
 
         if st.button("Aloita tutkimus →", type="primary"):
             with st.spinner("Kerätään aineistoa... Tämä voi kestää hetken."):
@@ -415,20 +430,32 @@ else:
                 kaikki_loydetyt_jakeet = set()
                 
                 # 1. Hae jakeet suoraan aihe-kuvauksesta
+                st.write("Haetaan viittauksia aiheesta...")
                 initial_refs = etsi_viittaukset_tekstista(st.session_state.aineisto['aihe'], book_map, book_data_map)
                 for ref in initial_refs:
                     fetched_verses = hae_tarkka_viittaus(ref, book_data_map, book_name_map, jakeita_ennen, jakeita_jalkeen)
                     kaikki_loydetyt_jakeet.update(fetched_verses)
                 
                 # 2. Hae jakeet tutkimussuunnitelman perusteella
+                st.write("Haetaan jakeita tutkimussuunnitelman mukaan...")
+                progress_bar = st.progress(0)
+                total_searches = len(final_kirjat) * len(final_hakusanat)
+                current_search = 0
+
                 for kirja in final_kirjat:
                     for sana in final_hakusanat:
                         jakeet = etsi_ja_laajenna(bible_data, book_map, book_name_map, book_data_map, sana, kirja, jakeita_ennen, jakeita_jalkeen)
                         kaikki_loydetyt_jakeet.update(jakeet)
+                        current_search += 1
+                        if total_searches > 0:
+                            progress_bar.progress(current_search / total_searches, text=f"Etsitään: '{sana}' ({kirja})")
+
+                progress_bar.empty()
                 
                 st.session_state.aineisto['jakeet'] = sorted(list(kaikki_loydetyt_jakeet))
                 
                 # 3. Luo sisällysluettelo
+                st.write("Luodaan sisällysluettelo...")
                 sisallysluettelo_str = luo_sisallysluettelo(st.session_state.aineisto['aihe'], st.session_state.aineisto['malli'], st.session_state.aineisto['noudata_ohjetta'])
                 st.session_state.aineisto['sisallysluettelo'] = sisallysluettelo_str
                 
