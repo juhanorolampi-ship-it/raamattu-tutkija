@@ -265,8 +265,24 @@ def tee_api_kutsu(prompt, malli, noudata_perusohjetta=True):
         st.error(f"API-VIRHE: {e}")
         return None
 
+# ==============================================================================
+# "SUPER-TIUKKA" OHJEISTUS SISÄLLYSLUETTELOLLE ESIMERKEILLÄ
+# ==============================================================================
 def luo_sisallysluettelo(aihe, malli, noudata_perusohjetta):
-    prompt = f"Olet teologi. Luo yksityiskohtainen ja selkeä sisällysluettelo laajalle opetukselle aiheesta '{aihe}'. Rakenna looginen runko, jossa on pää- ja alakohtia. Vastaa AINOASTAAN numeroituna listana. KIELLETTYÄ: Älä KOSKAAN lisää esimerkkilainauksia tai Raamatun jakeita sulkuihin tai mihinkään muuallekaan sisällysluetteloon. Vastaus saa sisältää AINOASTAAN otsikoita ja numerointia."
+    prompt = f"""
+Tehtäväsi on luoda selkeä, aihepohjainen sisällysluettelo Raamatun opetukselle aiheesta '{aihe}'.
+
+Noudata näitä sääntöjä EHDOTTOMASTI:
+1.  ÄLÄ LAINAA RAAMATTUA. Älä käytä lainausmerkkejä. Älä sisällytä jakeiden osia otsikoihin.
+2.  Luo otsikoita, jotka KUVAILEVAT jakeiden sisältöä ja teemoja, sen sijaan että lainaisit niitä.
+3.  Vastauksesi TÄYTYY sisältää AINOASTAAN numerointia ja itse luomiasi otsikkotekstejä.
+
+Esimerkki hyvästä ja huonosta otsikosta aiheelle "Joh. 3:16":
+- HYVÄ TAPA: "2.1. Jumalan rakkauden laajuus ja kohde"
+- HUONO TAPA: "2.1. 'Sillä niin on Jumala maailmaa rakastanut...'"
+
+Luo nyt yksityiskohtainen, numeroitu sisällysluettelo annettujen sääntöjen ja esimerkin mukaisesti.
+"""
     return tee_api_kutsu(prompt, malli, noudata_perusohjetta)
 
 def jarjestele_jakeet_osioihin(sisallysluettelo, jakeet, malli, noudata_perusohjetta):
