@@ -59,8 +59,8 @@ def lataa_raamattu(tiedostonimi="bible.json"):
     
     book_map, book_name_map, book_data_map = {}, {}, {}
     canonical_book_names = []
-    
-    # Järjestetään kirjat numeerisesti ID:n mukaan kanonisen järjestyksen luomiseksi
+    all_book_aliases = []
+
     sorted_book_ids = sorted(bible_data.get('book', {}).keys(), key=int)
 
     for book_id in sorted_book_ids:
@@ -75,12 +75,15 @@ def lataa_raamattu(tiedostonimi="bible.json"):
         names = [info.get('name', ''), info.get('shortname', '')] + info.get('abbr', [])
         for name in names:
             if name:
+                all_book_aliases.append(name) # Kerätään kaikki alkuperäiset nimet ja lyhenteet
                 key = name.lower().replace('.', '').replace(' ', '')
                 if key:
                     book_map[key] = (book_id, book_content)
 
     sorted_book_map = dict(sorted(book_map.items(), key=lambda item: len(item[0]), reverse=True))
-    return bible_data, sorted_book_map, book_name_map, book_data_map, canonical_book_names
+    # Palautetaan nyt myös lista kaikista aliaksista, pisimmästä lyhimpään
+    sorted_aliases = sorted(list(set(all_book_aliases)), key=len, reverse=True)
+    return bible_data, sorted_book_map, book_name_map, book_data_map, canonical_book_names, sorted_aliases
 
 LOG_FILE = "cost_log.json"
 
@@ -130,19 +133,15 @@ def laske_kustannus_arvio(token_count, model_name):
 # ==============================================================================
 # LOPULLINEN, VANKKA VIITTAUSTEN TUNNISTUS (v13.4)
 # ==============================================================================
-def etsi_viittaukset_tekstista(text, book_map, book_data_map):
-    # Luodaan dynaaminen ja erittäin tarkka regex-pattern kaikista tunnetuista kirjojen nimistä.
-    # Järjestys pisimmästä lyhimpään on elintärkeä, jotta "1. Johanneksen kirje" tunnistetaan ennen "Joh".
-    sorted_book_keys = sorted(book_map.keys(), key=len, reverse=True)
+def etsi_viittaukset_tekstista(text, book_map, book_data_map, sorted_aliases):
+    # Luodaan dynaaminen ja erittäin tarkka regex-pattern kaikista tunnetuista alkuperäisistä nimistä.
+    book_names_pattern = '|'.join(re.escape(alias) for alias in sorted_aliases)
     
-    # Poistetaan avaimista regexille haitalliset merkit ja yhdistetään ne '|'-merkillä (TAI)
-    # Tämä etsii TÄSMÄLLEEN näitä nimiä, eikä mitään muuta.
-    book_names_pattern = '|'.join(re.escape(key.replace('.', '')) for key in sorted_book_keys if len(key) > 1)
-
-    # Tämä on uusi, paljon luotettavampi pattern.
-    # \b varmistaa, että tunnistus osuu kokonaisiin sanoihin.
+    # Pattern etsii jonkin tunnetun nimen/lyhenteen, jota seuraa luku ja mahdollisesti jae.
+    # (?<![a-zA-ZäöÄÖ]) estää osumat sanojen sisällä (esim. "TeeJohannekselle" ei osu).
     pattern = re.compile(
-        r'\b(' + book_names_pattern + r')\.?\s+(\d+)(?:[:\s]([\d\s,-]+))?', 
+        r'(?<![a-zA-ZäöÄÖ])(' + book_names_pattern + r')'
+        r'\s+(\d+)(?:[:\s]([\d\s,-]+))?',
         re.IGNORECASE
     )
 
@@ -152,7 +151,7 @@ def etsi_viittaukset_tekstista(text, book_map, book_data_map):
     for match in matches:
         book_name_raw, chapter_str, verses_str = match
         
-        # Puhdistetaan ja normalisoidaan löydetty kirjan nimi avaimeksi
+        # Normalisoidaan löydetty osuma avaimeksi, jolla etsitään tiedot
         book_key = book_name_raw.lower().replace('.', '').replace(' ', '')
         
         if book_key in book_map:
@@ -164,7 +163,6 @@ def etsi_viittaukset_tekstista(text, book_map, book_data_map):
                 for verse_part in verse_parts:
                     verse_part = verse_part.strip()
                     if not verse_part: continue
-                    
                     start_verse, end_verse = 0, 0
                     if '-' in verse_part:
                         try: start_verse, end_verse = map(int, verse_part.split('-'))
@@ -172,14 +170,12 @@ def etsi_viittaukset_tekstista(text, book_map, book_data_map):
                     else:
                         try: start_verse = end_verse = int(verse_part)
                         except ValueError: continue
-                    
                     all_references.append({"book_id": book_id, "book_name": book_proper_name, "chapter": int(chapter_str), "start_verse": start_verse, "end_verse": end_verse, "original_match": f"{book_proper_name} {chapter_str}:{start_verse}" + (f"-{end_verse}" if start_verse != end_verse else "")})
-            else: # Jos jakeita ei ole määritelty, haetaan koko luku
+            else:
                 try:
                     last_verse_num = len(book_data_map[book_id]['chapter'][chapter_str]['verse'])
                     all_references.append({"book_id": book_id, "book_name": book_proper_name, "chapter": int(chapter_str), "start_verse": 1, "end_verse": last_verse_num, "original_match": f"{book_proper_name} {chapter_str}"})
                 except KeyError: continue
-                    
     return all_references
 
 
@@ -369,7 +365,7 @@ if not st.session_state.password_correct:
 else:
     st.title("📖 Älykäs Raamattu-tutkija v13.4")
     # Ladataan nyt myös kanoninen kirjalista
-    bible_data, book_map, book_name_map, book_data_map, canonical_book_names = lataa_raamattu()
+    bible_data, book_map, book_name_map, book_data_map, canonical_book_names, sorted_aliases = lataa_raamattu()
     lataa_paivittainen_laskuri()
 
     try:
@@ -478,7 +474,7 @@ else:
                 kaikki_loydetyt_jakeet = set()
                 
                 st.write("Haetaan viittauksia aiheesta...")
-                initial_refs = etsi_viittaukset_tekstista(st.session_state.aineisto['aihe'], book_map, book_data_map)
+               initial_refs = etsi_viittaukset_tekstista(st.session_state.aineisto['aihe'], book_map, book_data_map, sorted_aliases)
                 kaikki_loydetyt_jakeet.update(v for ref in initial_refs for v in hae_tarkka_viittaus(ref, book_data_map, book_name_map, jakeita_ennen, jakeita_jalkeen))
                 
                 st.write("Haetaan jakeita tutkimussuunnitelman mukaan...")
@@ -522,7 +518,7 @@ else:
                 st.session_state.aineisto['toimintatapa'] = toimintatapa
                 st.session_state.aineisto['sanamaara'] = sanamaara
                 with st.spinner("Tarkistetaan viittauksia sisällysluettelosta..."):
-                    references_in_toc = etsi_viittaukset_tekstista(st.session_state.sisallysluettelo_editori, book_map, book_data_map)
+                    references_in_toc = etsi_viittaukset_tekstista(st.session_state.sisallysluettelo_editori, book_map, book_data_map, sorted_aliases)
                     existing_verses_list_lower = [v.lower() for v in st.session_state.aineisto.get('jakeet', [])]
                     missing = [ref for ref in references_in_toc if not all(any(line.startswith(f'{ref["book_name"]} {ref["chapter"]}:{v_num}'.lower() + " -") for line in existing_verses_list_lower) for v_num in range(ref['start_verse'], ref['end_verse'] + 1))]
                 if not missing:
