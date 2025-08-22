@@ -474,7 +474,7 @@ else:
                 kaikki_loydetyt_jakeet = set()
                 
                 st.write("Haetaan viittauksia aiheesta...")
-               initial_refs = etsi_viittaukset_tekstista(st.session_state.aineisto['aihe'], book_map, book_data_map, sorted_aliases)
+                initial_refs = etsi_viittaukset_tekstista(st.session_state.aineisto['aihe'], book_map, book_data_map, sorted_aliases)
                 kaikki_loydetyt_jakeet.update(v for ref in initial_refs for v in hae_tarkka_viittaus(ref, book_data_map, book_name_map, jakeita_ennen, jakeita_jalkeen))
                 
                 st.write("Haetaan jakeita tutkimussuunnitelman mukaan...")
