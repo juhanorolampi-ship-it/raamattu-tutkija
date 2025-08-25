@@ -54,6 +54,7 @@ if "show_token_counter" not in st.session_state:
 # ==============================================================================
 @st.cache_data
 @st.cache_data
+@st.cache_data
 def lataa_raamattu(tiedostonimi="bible.json"):
     try:
         with open(tiedostonimi, "r", encoding="utf-8") as f:
@@ -80,15 +81,17 @@ def lataa_raamattu(tiedostonimi="bible.json"):
         names = [info.get('name', ''), info.get('shortname', '')] + info.get('abbr', [])
         for name in names:
             if name:
-                # TÄMÄ ON UUTTA: Varmistetaan, että alias on aina ilman pistettä lopussa
-                cleaned_name = name.rstrip('.')
-                all_book_aliases.append(cleaned_name)
+                # TÄMÄ ON UUTTA: Lisätään sekä pisteellinen että pisteetön versio aliaksista
+                all_book_aliases.append(name)
+                if not name.endswith('.'):
+                    all_book_aliases.append(name + '.')
 
                 key = name.lower().replace('.', '').replace(' ', '')
                 if key:
                     book_map[key] = (book_id, book_content)
 
     sorted_book_map = dict(sorted(book_map.items(), key=lambda item: len(item[0]), reverse=True))
+    # Poistetaan duplikaatit ja järjestetään pisimmästä lyhimpään
     sorted_aliases = sorted(list(set(all_book_aliases)), key=len, reverse=True)
     return bible_data, sorted_book_map, book_name_map, book_data_map, canonical_book_names, sorted_aliases
 
@@ -143,15 +146,15 @@ def laske_kustannus_arvio(token_count, model_name):
     return f"~{total_cost_eur:.4f} €"
 
 # ==============================================================================
-# LOPULLINEN, VANKKA VIITTAUSTEN TUNNISTUS (v13.9-korjattu 3)
+# LOPULLINEN, VANKKA VIITTAUSTEN TUNNISTUS (v14.0-korjattu 3)
 # ==============================================================================
 def etsi_viittaukset_tekstista(text, book_map, book_data_map, sorted_aliases):
-    # Luodaan pattern puhtaista, pisteettömistä aliaksista.
+    # Luodaan pattern, joka sisältää nyt kaikki mahdolliset (pisteelliset ja pisteettömät) aliakset.
     book_names_pattern = '|'.join(re.escape(alias) for alias in sorted_aliases)
     
-    # SÄÄNTÖ: Etsi sananrajalla oleva alias, jonka perässä VOI OLLA piste.
+    # Nyt voimme käyttää yksinkertaista ja luotettavaa sääntöä.
     pattern = re.compile(
-        r'\b(' + book_names_pattern + r')\.?\s+(\d+)\s*[:,\s]?\s*([\d\s-]+)?',
+        r'\b(' + book_names_pattern + r')\s+(\d+)\s*[:,\s]?\s*([\d\s-]+)?',
         re.IGNORECASE
     )
 
@@ -440,7 +443,7 @@ st.set_page_config(page_title="Älykäs Raamattu-tutkija", layout="wide")
 if not st.session_state.password_correct:
     check_password()
 else:
-    st.title("📖 Älykäs Raamattu-tutkija v13.9")
+    st.title("📖 Älykäs Raamattu-tutkija v14.0")
     # Ladataan nyt myös kanoninen kirjalista
     # UUSI RIVI
     (
@@ -534,7 +537,7 @@ else:
                     lisamateriaalit
                 )
 
-                # --- LOPULLINEN KORJATTU LOGIIKKA (v13.9) ---
+                # --- LOPULLINEN KORJATTU LOGIIKKA (v14.0) ---
                 # 1. Yhdistä aihe ja lisämateriaalien sisältö yhdeksi isoksi tekstiksi
                 koko_syote_teksti = aihe + "\n" + st.session_state.aineisto["lisamateriaali"]
 
@@ -812,7 +815,7 @@ Keskity ehdottamaan laadukkaita rinnakkaispaikkoja ja aiheeseen liittyviä teemo
                     key="jakeet_naytto",
                 )
     # ==============================================================================
-    # VAIHE 4: LOPPUTULOS (PAREMPI VIRHEIDENKÄSITTELY) v13.9
+    # VAIHE 4: LOPPUTULOS (PAREMPI VIRHEIDENKÄSITTELY) v14.0
     # ==============================================================================
     elif st.session_state.step == "output":
         st.header("4. Valmis tuotos")
