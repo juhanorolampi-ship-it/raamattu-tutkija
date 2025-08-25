@@ -147,19 +147,18 @@ def laske_kustannus_arvio(token_count, model_name):
     total_cost_eur = (input_cost_usd + output_cost_usd) * USD_TO_EUR
     return f"~{total_cost_eur:.4f} €"
 
-
 # ==============================================================================
-# LOPULLINEN, VANKKA VIITTAUSTEN TUNNISTUS (v13.8)
+# LOPULLINEN, VANKKA VIITTAUSTEN TUNNISTUS (v13.8-korjattu 2)
 # ==============================================================================
 def etsi_viittaukset_tekstista(text, book_map, book_data_map, sorted_aliases):
     # Luodaan dynaaminen ja erittäin tarkka regex-pattern kaikista tunnetuista alkuperäisistä nimistä.
     book_names_pattern = '|'.join(re.escape(alias) for alias in sorted_aliases)
     
-    # Pattern etsii jonkin tunnetun nimen/lyhenteen, jota seuraa luku ja mahdollisesti jae.
+    # KORJAUS: Käytetään \b (word boundary) varmistamaan, että osuma on sanan alussa.
+    # Se on luotettavampi kuin aiempi (?<!...) -rakenne erikoismerkkien, kuten sulkeiden, yhteydessä.
     pattern = re.compile(
-        r'(?<![a-zA-ZäöÄÖ])'  # Varmistaa, ettei osuma ole sanan sisällä
-        r'(' + book_names_pattern + r')'
-        r'\.?\s*(\d+)\s*[:,\s]?\s*([\d\s-]+)?', # Sallii pisteen, välilyönnit ja eri erottimet
+        r'\b(' + book_names_pattern + r')'  # <--- TÄSSÄ ON KRIITTINEN MUUTOS
+        r'\.?\s*(\d+)\s*[:,\s]?\s*([\d\s-]+)?',
         re.IGNORECASE
     )
 
