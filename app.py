@@ -149,7 +149,7 @@ def laske_kustannus_arvio(token_count, model_name):
 
 
 # ==============================================================================
-# LOPULLINEN, VANKKA VIITTAUSTEN TUNNISTUS (v13.5)
+# LOPULLINEN, VANKKA VIITTAUSTEN TUNNISTUS (v13.6)
 # ==============================================================================
 def etsi_viittaukset_tekstista(text, book_map, book_data_map, sorted_aliases):
     # Luodaan dynaaminen ja erittäin tarkka regex-pattern kaikista tunnetuista ALKUPERÄISISTÄ nimistä.
@@ -443,7 +443,7 @@ st.set_page_config(page_title="Älykäs Raamattu-tutkija", layout="wide")
 if not st.session_state.password_correct:
     check_password()
 else:
-    st.title("📖 Älykäs Raamattu-tutkija v13.5")
+    st.title("📖 Älykäs Raamattu-tutkija v13.6")
     # Ladataan nyt myös kanoninen kirjalista
     # UUSI RIVI
     (
@@ -537,7 +537,31 @@ else:
                     lisamateriaalit
                 )
 
-                suunnitelma_prompt = f"Analysoi Raamatun opetusaihe: '{aihe}'. Luo JSON-muodossa lista avainsanoista ('hakusanat') ja Raamatun kirjoista ('kirjat'), joista aiheeseen liittyviä jakeita todennäköisimmin löytyy. Jos aihe on tarkka jae (kuten 'Joh. 3:16'), rajoita ehdotetut kirjat pääasiassa samaan kirjaan ja muutamaan tärkeimpään temaattiseen rinnakkaispaikkaan. Jos aihe on laaja (kuten 'Rakkaus'), ehdota kirjoja laajasti koko Raamatusta."
+                # --- UUSI, KORJATTU LOGIIKKA ---
+                # 1. Poimi ensin KAIKKI viittaukset käyttäjän syötteestä
+                references_in_input = etsi_viittaukset_tekstista(
+                    aihe, book_map, book_data_map, sorted_aliases
+                )
+                
+                # 2. Kerää löydetyistä viittauksista uniikit kirjojen nimet
+                books_from_input = {ref["book_name"] for ref in references_in_input}
+
+                # 3. Muodosta kehotteen osa, joka kertoo tekoälylle jo löydetyt kirjat
+                if books_from_input:
+                    found_books_prompt_part = (
+                        "Käyttäjä on jo viitannut seuraaviin Raamatun kirjoihin: "
+                        f"{', '.join(sorted(list(books_from_input)))}. "
+                        "Sisällytä nämä kirjat ehdottomasti ehdotukseesi."
+                    )
+                else:
+                    found_books_prompt_part = ""
+
+                # 4. Luo uusi, älykkäämpi kehote tekoälylle
+                suunnitelma_prompt = f"""Analysoi Raamatun opetusaihe: '{aihe}'.
+{found_books_prompt_part}
+Luo JSON-muodossa lista avainsanoista ('hakusanat') ja Raamatun kirjoista ('kirjat'), joista aiheeseen liittyviä jakeita todennäköisimmin löytyy.
+Tavoitteena on löytää KATTAVA aineisto. Jos aihe on laaja (kuten 'Rakkaus'), ehdota kirjoja laajasti. Jos aihe on tarkka ja sisältää jo viittauksia, laajenna ehdotuksia temaattisesti relevantteihin rinnakkaispaikkoihin.
+"""
                 suunnitelma_str = tee_api_kutsu(
                     suunnitelma_prompt,
                     "gemini-1.5-flash",
@@ -556,10 +580,14 @@ else:
                     )
                     suunnitelma = {"hakusanat": [], "kirjat": []}
 
+                # 5. Yhdistä tekoälyn ehdotukset ja käyttäjän syötteestä löydetyt kirjat
+                ai_suggested_books = set(suunnitelma.get("kirjat", []))
+                final_book_suggestions = sorted(list(books_from_input.union(ai_suggested_books)))
+
                 st.session_state.aineisto["hakusanat"] = suunnitelma.get(
                     "hakusanat", []
                 )
-                st.session_state.aineisto["kirjat"] = suunnitelma.get("kirjat", [])
+                st.session_state.aineisto["kirjat"] = final_book_suggestions
 
                 st.session_state.step = "plan_review"
                 st.rerun()
@@ -797,7 +825,7 @@ else:
     # VAIHE 4: LOPPUTULOS (PÄIVITETTY JAKEIDEN HAKULOGIIKKA)
     # ==============================================================================
     # ==============================================================================
-    # VAIHE 4: LOPPUTULOS (PÄIVITETTY OHJEISTUS JA LASKURI) v13.5
+    # VAIHE 4: LOPPUTULOS (PÄIVITETTY OHJEISTUS JA LASKURI) v13.6
     # ==============================================================================
     elif st.session_state.step == "output":
         st.header("4. Valmis tuotos")
