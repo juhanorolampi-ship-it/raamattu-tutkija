@@ -148,7 +148,7 @@ def laske_kustannus_arvio(token_count, model_name):
     return f"~{total_cost_eur:.4f} €"
 
 # ==============================================================================
-# LOPULLINEN, VANKKA VIITTAUSTEN TUNNISTUS (v13.8-korjattu 2)
+# LOPULLINEN, VANKKA VIITTAUSTEN TUNNISTUS (v13.9-korjattu 2)
 # ==============================================================================
 def etsi_viittaukset_tekstista(text, book_map, book_data_map, sorted_aliases):
     # Luodaan dynaaminen ja erittäin tarkka regex-pattern kaikista tunnetuista alkuperäisistä nimistä.
@@ -335,30 +335,57 @@ Luo nyt yksityiskohtainen, numeroitu sisällysluettelo annettujen sääntöjen j
 
 
 def jarjestele_jakeet_osioihin(sisallysluettelo, jakeet, malli, noudata_perusohjetta):
-    jae_teksti = "\n".join(jakeet)
-    # KORJATTU PROMPT: Käskee tekoälyä käsittelemään myös alakohdat oikein
-    prompt = f"""Tehtäväsi on järjestellä Raamatun jakeet sisällysluettelon osioiden alle.
+    BATCH_SIZE = 30  # Käsitellään 30 jaetta kerrallaan
+    final_jae_kartta = {}
+
+    # Alustetaan lopullinen kartta tyhjillä listoilla
+    for i, rivi in enumerate(sisallysluettelo.split('\n')):
+        if rivi.strip():
+            osion_numero = rivi.strip().split('.')[0]
+            if osion_numero.isdigit() and osion_numero not in final_jae_kartta:
+                final_jae_kartta[osion_numero] = []
+
+    with st.spinner(f"Järjestellään {len(jakeet)} jaetta osioihin...") as spinner:
+        for i in range(0, len(jakeet), BATCH_SIZE):
+            batch = jakeet[i:i + BATCH_SIZE]
+            spinner.text = f"Järjestellään {len(jakeet)} jaetta... (käsitellään jakeet {i+1}-{min(i+BATCH_SIZE, len(jakeet))})"
+            
+            jae_teksti = "\n".join(batch)
+            prompt = f"""Tehtäväsi on järjestellä seuraavat Raamatun jakeet sisällysluettelon osioiden alle.
 
 SISÄLLYSLUETTELO:
 {sisallysluettelo}
 
-LÖYDETYT JAKEET:
+JÄRJESTELTÄVÄT JAKEET:
 {jae_teksti}
 
 OHJEET VASTAUSTA VARTEN:
 1.  Vastaa AINOASTAAN JSON-muodossa.
 2.  Käytä JSON-avaimina AINOASTAAN sisällysluettelon PÄÄNUMEROITA (esim. "1", "2", "3").
-3.  Jos sisällysluettelossa on alakohtia (esim. "1.1", "1.2"), sijoita niihin kuuluvat jakeet niiden pääkohdan avaimen alle (esim. kaikki jakeet kohtiin 1, 1.1 ja 1.2 tulevat avaimen "1" alle).
-4.  Jokainen jae tulee sijoittaa vähintään yhteen osioon.
+3.  Jos sisällysluettelossa on alakohtia (esim. "1.1"), sijoita niihin kuuluvat jakeet niiden pääkohdan avaimen alle.
+4.  Jokainen jae tulee sijoittaa vähintään yhteen osioon. Jos jae ei tunnu sopivan mihinkään, älä sisällytä sitä vastaukseen.
 
-Esimerkki vastauksesta: {{ "1": ["Joh. 1:1 - ...", "Room. 3:23 - ..."], "2": ["1. Moos. 1:1 - ..."] }}
+Esimerkki vastauksesta: {{ "1": ["Joh. 1:1 - ..."], "2": ["1. Moos. 1:1 - ...", "Room. 5:8 - ..."] }}
 """
-    vastaus_str = tee_api_kutsu(prompt, malli, noudata_perusohjetta)
-    try:
-        cleaned_response = vastaus_str.strip().replace("```json", "").replace("```", "")
-        return json.loads(cleaned_response)
-    except (json.JSONDecodeError, AttributeError):
-        return None
+            vastaus_str = tee_api_kutsu(prompt, malli, noudata_perusohjetta)
+            
+            try:
+                cleaned_response = vastaus_str.strip().replace("```json", "").replace("```", "")
+                batch_kartta = json.loads(cleaned_response)
+                
+                # Yhdistetään erän tulokset lopulliseen karttaan
+                for osio, osion_jakeet in batch_kartta.items():
+                    if osio in final_jae_kartta:
+                        final_jae_kartta[osio].extend(osion_jakeet)
+            except (json.JSONDecodeError, AttributeError):
+                st.warning(f"Jakeiden {i+1}-{i+BATCH_SIZE} järjestely erässä epäonnistui. Nämä jakeet saatetaan ohittaa.")
+                continue # Jatketaan seuraavaan erään
+
+    # Poistetaan mahdolliset duplikaatit
+    for osio in final_jae_kartta:
+        final_jae_kartta[osio] = sorted(list(set(final_jae_kartta[osio])))
+        
+    return final_jae_kartta
 
 
 def kirjoita_osio(
@@ -417,7 +444,7 @@ st.set_page_config(page_title="Älykäs Raamattu-tutkija", layout="wide")
 if not st.session_state.password_correct:
     check_password()
 else:
-    st.title("📖 Älykäs Raamattu-tutkija v13.8")
+    st.title("📖 Älykäs Raamattu-tutkija v13.9")
     # Ladataan nyt myös kanoninen kirjalista
     # UUSI RIVI
     (
@@ -511,7 +538,7 @@ else:
                     lisamateriaalit
                 )
 
-                # --- LOPULLINEN KORJATTU LOGIIKKA (v13.8) ---
+                # --- LOPULLINEN KORJATTU LOGIIKKA (v13.9) ---
                 # 1. Yhdistä aihe ja lisämateriaalien sisältö yhdeksi isoksi tekstiksi
                 koko_syote_teksti = aihe + "\n" + st.session_state.aineisto["lisamateriaali"]
 
@@ -789,12 +816,28 @@ Keskity ehdottamaan laadukkaita rinnakkaispaikkoja ja aiheeseen liittyviä teemo
                     key="jakeet_naytto",
                 )
     # ==============================================================================
-    # VAIHE 4: LOPPUTULOS (PÄIVITETTY OHJEISTUS JA LASKURI) v13.8
+    # VAIHE 4: LOPPUTULOS (PAREMPI VIRHEIDENKÄSITTELY) v13.9
     # ==============================================================================
     elif st.session_state.step == "output":
         st.header("4. Valmis tuotos")
         aineisto = st.session_state.aineisto
         lopputulos = ""
+
+        jae_kartta = jarjestele_jakeet_osioihin(
+            aineisto["sisallysluettelo"],
+            aineisto["jakeet"],
+            aineisto["malli"],
+            aineisto["noudata_ohjetta"],
+        )
+
+        # UUSI, PAREMPI VIRHEIDENKÄSITTELY
+        if not jae_kartta or not any(jae_kartta.values()):
+            st.error("**Kriittinen virhe jakeiden järjestelyssä!** Tekoäly ei onnistunut lajittelemaan jakeita sisällysluettelon alle, mahdollisesti aineiston suuren koon vuoksi. Prosessia ei voida jatkaa turvallisesti.")
+            st.warning("Palaa edelliseen vaiheeseen ja yritä karsia hakusanoja tai valittujen Raamatun kirjojen määrää.")
+            if st.button("← Palaa muokkaamaan suunnitelmaa"):
+                st.session_state.step = "plan_review"
+                st.rerun()
+            st.stop() # Pysäytetään suoritus kokonaan
 
         with st.sidebar:
             st.header("Navigaatio")
@@ -826,29 +869,8 @@ Keskity ehdottamaan laadukkaita rinnakkaispaikkoja ja aiheeseen liittyviä teemo
                     help=f"Arvioidut kustannukset: {daily_hinta_out}",
                 )
 
-        with st.spinner("Järjestellään jakeita osioihin..."):
-            jae_kartta = jarjestele_jakeet_osioihin(
-                aineisto["sisallysluettelo"],
-                aineisto["jakeet"],
-                aineisto["malli"],
-                aineisto["noudata_ohjetta"],
-            )
-            
-            # --- KORJATTU LASKENTALOGIIKKA ---
-            alkuperainen_maara = len(aineisto.get("jakeet", []))
-            if jae_kartta:
-                suodatetut_jakeet = {
-                    jae
-                    for jakeet_listassa in jae_kartta.values()
-                    for jae in jakeet_listassa
-                }
-                aineisto["suodatettu_jaemaara"] = len(suodatetut_jakeet)
-            else:
-                st.warning(
-                    "Jakeiden automaattinen järjestely osioihin ei onnistunut. Tekoäly ei palauttanut kelvollista JSON-muotoa. Kaikki kerätyt jakeet käytetään jokaiseen osioon."
-                )
-                # Jos järjestely epäonnistuu, kaikki kerätyt jakeet ovat käytettyjä.
-                aineisto["suodatettu_jaemaara"] = alkuperainen_maara
+        suodatetut_jakeet = {jae for jae_list in jae_kartta.values() for jae in jae_list}
+        aineisto["suodatettu_jaemaara"] = len(suodatetut_jakeet)
 
         if aineisto.get("toimintatapa") == "Valmis opetus (Optimoitu)":
             with st.status("Kirjoitetaan opetusta...", expanded=True) as status:
@@ -868,12 +890,14 @@ Keskity ehdottamaan laadukkaita rinnakkaispaikkoja ja aiheeseen liittyviä teemo
                     status.write(
                         f"Kirjoitetaan osiota {i + 1}/{osioiden_maara}: {otsikko}..."
                     )
+
                     osion_numero = otsikko.split(".")[0]
                     relevantit_jakeet = (
                         jae_kartta.get(osion_numero, [])
                         if jae_kartta
                         else aineisto["jakeet"]
                     )
+
                     puhdas_otsikko = re.sub(r"^\d+(\.\d+)*\s*\.?\s*", "", otsikko)
                     osio_teksti = kirjoita_osio(
                         aineisto["aihe"],
@@ -894,7 +918,6 @@ Keskity ehdottamaan laadukkaita rinnakkaispaikkoja ja aiheeseen liittyviä teemo
 
         elif aineisto.get("toimintatapa") == "Tutkimusraportti (Jatkojalostukseen)":
             with st.spinner("Kootaan tutkimusraportin pohjaa..."):
-                # --- PALAUTETTU PAREMPI OHJEISTUS ---
                 komentopohja = f"""AIHE:
 {aineisto['aihe']}
 
