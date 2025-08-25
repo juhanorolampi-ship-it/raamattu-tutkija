@@ -796,6 +796,9 @@ else:
     # ==============================================================================
     # VAIHE 4: LOPPUTULOS (PÄIVITETTY JAKEIDEN HAKULOGIIKKA)
     # ==============================================================================
+    # ==============================================================================
+    # VAIHE 4: LOPPUTULOS (PÄIVITETTY OHJEISTUS JA LASKURI) v13.5
+    # ==============================================================================
     elif st.session_state.step == "output":
         st.header("4. Valmis tuotos")
         aineisto = st.session_state.aineisto
@@ -820,7 +823,7 @@ else:
                     help=f"Arvioidut kustannukset: {session_hinta_out}",
                 )
 
-                st.subheader("Päivän kulutus")
+                st.subheader(f"Päivän kulutus")
                 daily_hinta_out = laske_kustannus_arvio(
                     st.session_state.daily_token_count,
                     st.session_state.aineisto["malli"],
@@ -838,7 +841,9 @@ else:
                 aineisto["malli"],
                 aineisto["noudata_ohjetta"],
             )
-
+            
+            # --- KORJATTU LASKENTALOGIIKKA ---
+            alkuperainen_maara = len(aineisto.get("jakeet", []))
             if jae_kartta:
                 suodatetut_jakeet = {
                     jae
@@ -848,9 +853,10 @@ else:
                 aineisto["suodatettu_jaemaara"] = len(suodatetut_jakeet)
             else:
                 st.warning(
-                    "Jakeiden automaattinen järjestely osioihin ei onnistunut. Tekoäly ei palauttanut kelvollista JSON-muotoa. Kaikki jakeet käytetään jokaiseen osioon."
+                    "Jakeiden automaattinen järjestely osioihin ei onnistunut. Tekoäly ei palauttanut kelvollista JSON-muotoa. Kaikki kerätyt jakeet käytetään jokaiseen osioon."
                 )
-                aineisto["suodatettu_jaemaara"] = 0
+                # Jos järjestely epäonnistuu, kaikki kerätyt jakeet ovat käytettyjä.
+                aineisto["suodatettu_jaemaara"] = alkuperainen_maara
 
         if aineisto.get("toimintatapa") == "Valmis opetus (Optimoitu)":
             with st.status("Kirjoitetaan opetusta...", expanded=True) as status:
@@ -870,15 +876,12 @@ else:
                     status.write(
                         f"Kirjoitetaan osiota {i + 1}/{osioiden_maara}: {otsikko}..."
                     )
-
-                    # UUSI LOGIIKKA: Hae avaimella, joka on osion päänumero merkkijonona
                     osion_numero = otsikko.split(".")[0]
                     relevantit_jakeet = (
                         jae_kartta.get(osion_numero, [])
                         if jae_kartta
                         else aineisto["jakeet"]
                     )
-
                     puhdas_otsikko = re.sub(r"^\d+(\.\d+)*\s*\.?\s*", "", otsikko)
                     osio_teksti = kirjoita_osio(
                         aineisto["aihe"],
@@ -899,7 +902,26 @@ else:
 
         elif aineisto.get("toimintatapa") == "Tutkimusraportti (Jatkojalostukseen)":
             with st.spinner("Kootaan tutkimusraportin pohjaa..."):
-                komentopohja = f"""AIHE:\n{aineisto["aihe"]}\n\n---\nSISÄLLYSLUETTELO, JOTA TULEE NOUDATTAA:\n{aineisto["sisallysluettelo"]}\n\n---\nLÄHDEMATERIAALI (AINOAT SALLITUT KR33/38-JAKEET):\n{"\n".join(aineisto["jakeet"])}\n\n---\nLISÄMATERIAALI:\n{aineisto["lisamateriaali"] if aineisto["lisamateriaali"] else "Ei lisämateriaalia."}\n\n---\nTEHTÄVÄNANTO:\nKirjoita yllä olevien ohjeiden ja materiaalien pohjalta kattava opetus tai tutkimusraportti."""
+                # --- PALAUTETTU PAREMPI OHJEISTUS ---
+                komentopohja = f"""AIHE:
+{aineisto['aihe']}
+
+---
+SISÄLLYSLUETTELO, JOTA TULEE NOUDATTAA:
+{aineisto['sisallysluettelo']}
+
+---
+LÄHDEMATERIAALI (AINOAT SALLITUT KR33/38-JAKEET):
+{"\n".join(aineisto['jakeet'])}
+
+---
+LISÄMATERIAALI:
+{aineisto['lisamateriaali'] if aineisto['lisamateriaali'] else "Ei lisämateriaalia."}
+
+---
+TEHTÄVÄNANTO:
+Kirjoita noin {aineisto.get('sanamaara', 4000)} sanan mittainen opetus. Käytä vivahteikasta kieltä ja varmista, että teologiset päätelmät ovat loogisia ja perustuvat ainoastaan annettuun materiaaliin.
+"""
                 lopputulos = komentopohja
 
         alkuperainen_maara = len(aineisto.get("jakeet", []))
