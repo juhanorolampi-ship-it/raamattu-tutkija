@@ -344,13 +344,12 @@ def jarjestele_jakeet_osioihin(sisallysluettelo, jakeet, malli, noudata_perusohj
             if osion_numero.isdigit() and osion_numero not in final_jae_kartta:
                 final_jae_kartta[osion_numero] = []
 
-    with st.spinner(f"Järjestellään {len(jakeet)} jaetta osioihin...") as spinner:
-        for i in range(0, len(jakeet), BATCH_SIZE):
-            batch = jakeet[i:i + BATCH_SIZE]
-            spinner.text = f"Järjestellään {len(jakeet)} jaetta... (käsitellään jakeet {i+1}-{min(i+BATCH_SIZE, len(jakeet))})"
-            
-            jae_teksti = "\n".join(batch)
-            prompt = f"""Tehtäväsi on järjestellä seuraavat Raamatun jakeet sisällysluettelon osioiden alle.
+    # HUOM: Poistettu viittaus spinneriin tästä funktiosta
+    for i in range(0, len(jakeet), BATCH_SIZE):
+        batch = jakeet[i:i + BATCH_SIZE]
+        
+        jae_teksti = "\n".join(batch)
+        prompt = f"""Tehtäväsi on järjestellä seuraavat Raamatun jakeet sisällysluettelon osioiden alle.
 
 SISÄLLYSLUETTELO:
 {sisallysluettelo}
@@ -366,19 +365,19 @@ OHJEET VASTAUSTA VARTEN:
 
 Esimerkki vastauksesta: {{ "1": ["Joh. 1:1 - ..."], "2": ["1. Moos. 1:1 - ...", "Room. 5:8 - ..."] }}
 """
-            vastaus_str = tee_api_kutsu(prompt, malli, noudata_perusohjetta)
+        vastaus_str = tee_api_kutsu(prompt, malli, noudata_perusohjetta)
+        
+        try:
+            cleaned_response = vastaus_str.strip().replace("```json", "").replace("```", "")
+            batch_kartta = json.loads(cleaned_response)
             
-            try:
-                cleaned_response = vastaus_str.strip().replace("```json", "").replace("```", "")
-                batch_kartta = json.loads(cleaned_response)
-                
-                # Yhdistetään erän tulokset lopulliseen karttaan
-                for osio, osion_jakeet in batch_kartta.items():
-                    if osio in final_jae_kartta:
-                        final_jae_kartta[osio].extend(osion_jakeet)
-            except (json.JSONDecodeError, AttributeError):
-                st.warning(f"Jakeiden {i+1}-{i+BATCH_SIZE} järjestely erässä epäonnistui. Nämä jakeet saatetaan ohittaa.")
-                continue # Jatketaan seuraavaan erään
+            # Yhdistetään erän tulokset lopulliseen karttaan
+            for osio, osion_jakeet in batch_kartta.items():
+                if osio in final_jae_kartta:
+                    final_jae_kartta[osio].extend(osion_jakeet)
+        except (json.JSONDecodeError, AttributeError):
+            st.warning(f"Jakeiden {i+1}-{i+BATCH_SIZE} järjestely erässä epäonnistui. Nämä jakeet saatetaan ohittaa.")
+            continue # Jatketaan seuraavaan erään
 
     # Poistetaan mahdolliset duplikaatit
     for osio in final_jae_kartta:
