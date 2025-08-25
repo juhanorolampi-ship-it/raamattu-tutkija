@@ -151,14 +151,14 @@ def laske_kustannus_arvio(token_count, model_name):
 # LOPULLINEN, VANKKA VIITTAUSTEN TUNNISTUS (v13.9-korjattu 3)
 # ==============================================================================
 def etsi_viittaukset_tekstista(text, book_map, book_data_map, sorted_aliases):
-    # Luodaan dynaaminen ja erittäin tarkka regex-pattern kaikista tunnetuista alkuperäisistä nimistä.
     book_names_pattern = '|'.join(re.escape(alias) for alias in sorted_aliases)
     
-    # YKSINKERTAISTETTU JA VANKEMPI PATTERN:
-    # Etsii tunnetun nimen, jonka perässä on pakollinen välilyönti ja numero.
+    # YHDISTETÄÄN AIEMPIEN VERSIOIDEN PARHAAT PUOLET:
+    # \b varmistaa, että olemme sanan rajalla (toimii hyvin sulkeiden kanssa).
+    # \s* sallii joustavasti välilyönnit (myös niiden puuttumisen).
     pattern = re.compile(
-        r'(' + book_names_pattern + r')'
-        r'\.?\s+(\d+)\s*[:,\s]?\s*([\d\s-]+)?',
+        r'\b(' + book_names_pattern + r')'
+        r'\.?\s*(\d+)\s*[:,\s]?\s*([\d\s-]+)?',
         re.IGNORECASE
     )
 
@@ -168,7 +168,6 @@ def etsi_viittaukset_tekstista(text, book_map, book_data_map, sorted_aliases):
     for match in matches:
         book_name_raw, chapter_str, verses_str = match[0], match[1], match[2]
         
-        # Normalisoidaan löydetty osuma avaimeksi, jolla etsitään tiedot
         book_key = book_name_raw.lower().replace('.', '').replace(' ', '')
         
         if book_key in book_map:
