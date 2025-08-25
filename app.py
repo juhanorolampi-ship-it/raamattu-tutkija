@@ -154,11 +154,13 @@ def etsi_viittaukset_tekstista(text, book_map, book_data_map, sorted_aliases):
     # Luodaan dynaaminen ja erittäin tarkka regex-pattern kaikista tunnetuista alkuperäisistä nimistä.
     book_names_pattern = '|'.join(re.escape(alias) for alias in sorted_aliases)
     
-    # KORJAUS: Käytetään \b (word boundary) varmistamaan, että osuma on sanan alussa.
-    # Se on luotettavampi kuin aiempi (?<!...) -rakenne erikoismerkkien, kuten sulkeiden, yhteydessä.
+    # YKSINKERTAISTETTU JA VANKEMPI PATTERN:
+    # Etsii tunnetun nimen, jonka perässä on pakollinen välilyönti ja numero.
+    # Tämä on luotettavampi tapa tunnistaa viittaus vapaasta tekstistä.
     pattern = re.compile(
-        r'\b(' + book_names_pattern + r')'  # <--- TÄSSÄ ON KRIITTINEN MUUTOS
-        r'\.?\s*(\d+)\s*[:,\s]?\s*([\d\s-]+)?',
+        r'(' + book_names_pattern + r')'  # 1. Ryhmä: Kirjan nimi/lyhenne
+        r'\s+(\d+)'                     # Pakollinen välilyönti ja 2. Ryhmä: Luku
+        r'\s*[:,\s]?\s*([\d\s-]+)?',      # Valinnainen erotin ja 3. Ryhmä: Jakeet
         re.IGNORECASE
     )
 
