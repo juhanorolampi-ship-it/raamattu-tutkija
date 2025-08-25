@@ -152,15 +152,15 @@ def laske_kustannus_arvio(token_count, model_name):
 # LOPULLINEN, VANKKA VIITTAUSTEN TUNNISTUS (v13.8)
 # ==============================================================================
 def etsi_viittaukset_tekstista(text, book_map, book_data_map, sorted_aliases):
-    # Luodaan dynaaminen ja erittäin tarkka regex-pattern kaikista tunnetuista ALKUPERÄISISTÄ nimistä.
-    book_names_pattern = "|".join(re.escape(alias) for alias in sorted_aliases)
-
+    # Luodaan dynaaminen ja erittäin tarkka regex-pattern kaikista tunnetuista alkuperäisistä nimistä.
+    book_names_pattern = '|'.join(re.escape(alias) for alias in sorted_aliases)
+    
     # Pattern etsii jonkin tunnetun nimen/lyhenteen, jota seuraa luku ja mahdollisesti jae.
     pattern = re.compile(
-        r"(?<![a-zA-ZäöÄÖ])"  # Varmistaa, ettei osuma ole sanan sisällä
-        r"(" + book_names_pattern + r")"
-        r"\s*(\d+)\s*[:,\s]?\s*([\d\s-]+)?",
-        re.IGNORECASE,
+        r'(?<![a-zA-ZäöÄÖ])'  # Varmistaa, ettei osuma ole sanan sisällä
+        r'(' + book_names_pattern + r')'
+        r'\.?\s*(\d+)\s*[:,\s]?\s*([\d\s-]+)?', # Sallii pisteen, välilyönnit ja eri erottimet
+        re.IGNORECASE
     )
 
     all_references = []
@@ -168,58 +168,33 @@ def etsi_viittaukset_tekstista(text, book_map, book_data_map, sorted_aliases):
 
     for match in matches:
         book_name_raw, chapter_str, verses_str = match[0], match[1], match[2]
-
+        
         # Normalisoidaan löydetty osuma avaimeksi, jolla etsitään tiedot
-        book_key = book_name_raw.lower().replace(".", "").replace(" ", "")
-
+        book_key = book_name_raw.lower().replace('.', '').replace(' ', '')
+        
         if book_key in book_map:
             book_id, content = book_map[book_key]
-            book_proper_name = content["info"].get("name", book_name_raw.strip())
-
+            book_proper_name = content['info'].get('name', book_name_raw.strip())
+            
             if verses_str:
-                verse_parts = verses_str.replace(" ", "").split(",")
+                verse_parts = verses_str.replace(' ', '').split(',')
                 for verse_part in verse_parts:
-                    if not verse_part:
-                        continue
+                    if not verse_part: continue
                     start_verse, end_verse = 0, 0
-                    if "-" in verse_part:
+                    if '-' in verse_part:
                         try:
-                            start_verse, end_verse = map(int, verse_part.split("-"))
-                        except ValueError:
-                            continue
+                            start_verse, end_verse = map(int, verse_part.split('-'))
+                        except ValueError: continue
                     else:
                         try:
                             start_verse = end_verse = int(verse_part)
-                        except ValueError:
-                            continue
-                    all_references.append(
-                        {
-                            "book_id": book_id,
-                            "book_name": book_proper_name,
-                            "chapter": int(chapter_str),
-                            "start_verse": start_verse,
-                            "end_verse": end_verse,
-                            "original_match": f"{book_proper_name} {chapter_str}:{start_verse}"
-                            + (f"-{end_verse}" if start_verse != end_verse else ""),
-                        }
-                    )
+                        except ValueError: continue
+                    all_references.append({"book_id": book_id, "book_name": book_proper_name, "chapter": int(chapter_str), "start_verse": start_verse, "end_verse": end_verse, "original_match": f"{book_proper_name} {chapter_str}:{start_verse}" + (f"-{end_verse}" if start_verse != end_verse else "")})
             else:
                 try:
-                    last_verse_num = len(
-                        book_data_map[book_id]["chapter"][chapter_str]["verse"]
-                    )
-                    all_references.append(
-                        {
-                            "book_id": book_id,
-                            "book_name": book_proper_name,
-                            "chapter": int(chapter_str),
-                            "start_verse": 1,
-                            "end_verse": last_verse_num,
-                            "original_match": f"{book_proper_name} {chapter_str}",
-                        }
-                    )
-                except KeyError:
-                    continue
+                    last_verse_num = len(book_data_map[book_id]['chapter'][chapter_str]['verse'])
+                    all_references.append({"book_id": book_id, "book_name": book_proper_name, "chapter": int(chapter_str), "start_verse": 1, "end_verse": last_verse_num, "original_match": f"{book_proper_name} {chapter_str}"})
+                except KeyError: continue
     return all_references
 
 
@@ -814,10 +789,6 @@ Keskity ehdottamaan laadukkaita rinnakkaispaikkoja ja aiheeseen liittyviä teemo
                     height=300,
                     key="jakeet_naytto",
                 )
-
-    # ==============================================================================
-    # VAIHE 4: LOPPUTULOS (PÄIVITETTY JAKEIDEN HAKULOGIIKKA)
-    # ==============================================================================
     # ==============================================================================
     # VAIHE 4: LOPPUTULOS (PÄIVITETTY OHJEISTUS JA LASKURI) v13.8
     # ==============================================================================
