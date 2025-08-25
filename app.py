@@ -53,6 +53,7 @@ if "show_token_counter" not in st.session_state:
 # KANONISEN KIRJAJÄRJESTYKSEN LISÄYS
 # ==============================================================================
 @st.cache_data
+@st.cache_data
 def lataa_raamattu(tiedostonimi="bible.json"):
     try:
         with open(tiedostonimi, "r", encoding="utf-8") as f:
@@ -60,42 +61,36 @@ def lataa_raamattu(tiedostonimi="bible.json"):
     except FileNotFoundError:
         st.error(f"KRIITTINEN VIRHE: Tiedostoa '{tiedostonimi}' ei löytynyt.")
         st.stop()
-
+    
     book_map, book_name_map, book_data_map = {}, {}, {}
     canonical_book_names = []
     all_book_aliases = []
 
-    sorted_book_ids = sorted(bible_data.get("book", {}).keys(), key=int)
+    sorted_book_ids = sorted(bible_data.get('book', {}).keys(), key=int)
 
     for book_id in sorted_book_ids:
-        book_content = bible_data["book"][book_id]
+        book_content = bible_data['book'][book_id]
         book_data_map[book_id] = book_content
-        info = book_content.get("info", {})
-        proper_name = info.get("name", f"Kirja {book_id}")
-
+        info = book_content.get('info', {})
+        proper_name = info.get('name', f"Kirja {book_id}")
+        
         book_name_map[book_id] = proper_name
         canonical_book_names.append(proper_name)
-
-        names = [info.get("name", ""), info.get("shortname", "")] + info.get("abbr", [])
+        
+        names = [info.get('name', ''), info.get('shortname', '')] + info.get('abbr', [])
         for name in names:
             if name:
-                all_book_aliases.append(name)
-                key = name.lower().replace(".", "").replace(" ", "")
+                # TÄMÄ ON UUTTA: Varmistetaan, että alias on aina ilman pistettä lopussa
+                cleaned_name = name.rstrip('.')
+                all_book_aliases.append(cleaned_name)
+
+                key = name.lower().replace('.', '').replace(' ', '')
                 if key:
                     book_map[key] = (book_id, book_content)
 
-    sorted_book_map = dict(
-        sorted(book_map.items(), key=lambda item: len(item[0]), reverse=True)
-    )
+    sorted_book_map = dict(sorted(book_map.items(), key=lambda item: len(item[0]), reverse=True))
     sorted_aliases = sorted(list(set(all_book_aliases)), key=len, reverse=True)
-    return (
-        bible_data,
-        sorted_book_map,
-        book_name_map,
-        book_data_map,
-        canonical_book_names,
-        sorted_aliases,
-    )
+    return bible_data, sorted_book_map, book_name_map, book_data_map, canonical_book_names, sorted_aliases
 
 
 LOG_FILE = "cost_log.json"
@@ -151,14 +146,12 @@ def laske_kustannus_arvio(token_count, model_name):
 # LOPULLINEN, VANKKA VIITTAUSTEN TUNNISTUS (v13.9-korjattu 3)
 # ==============================================================================
 def etsi_viittaukset_tekstista(text, book_map, book_data_map, sorted_aliases):
+    # Luodaan pattern puhtaista, pisteettömistä aliaksista.
     book_names_pattern = '|'.join(re.escape(alias) for alias in sorted_aliases)
     
-    # YHDISTETÄÄN AIEMPIEN VERSIOIDEN PARHAAT PUOLET:
-    # \b varmistaa, että olemme sanan rajalla (toimii hyvin sulkeiden kanssa).
-    # \s* sallii joustavasti välilyönnit (myös niiden puuttumisen).
+    # SÄÄNTÖ: Etsi sananrajalla oleva alias, jonka perässä VOI OLLA piste.
     pattern = re.compile(
-        r'\b(' + book_names_pattern + r')'
-        r'\.?\s*(\d+)\s*[:,\s]?\s*([\d\s-]+)?',
+        r'\b(' + book_names_pattern + r')\.?\s+(\d+)\s*[:,\s]?\s*([\d\s-]+)?',
         re.IGNORECASE
     )
 
