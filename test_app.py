@@ -14,7 +14,6 @@ class TestViittaustenTunnistus(unittest.TestCase):
         teksti = "Tärkeä jae on Joh. 3:16 ja myös Room. 5:8."
         viittaukset = etsi_viittaukset_tekstista(teksti, self.book_map, self.book_data_map, self.sorted_aliases)
         self.assertEqual(len(viittaukset), 2)
-        # KORJATTU: Hyväksyy sen nimen, jonka bible.json antaa
         self.assertIn(viittaukset[0]['book_name'], ['Johannes', 'Johanneksen evankeliumi'])
         self.assertEqual(viittaukset[1]['book_name'], 'Roomalaiskirje')
 
@@ -23,12 +22,12 @@ class TestViittaustenTunnistus(unittest.TestCase):
         teksti = "Tämä mainitaan kohdassa Luuk. 16:10."
         viittaukset = etsi_viittaukset_tekstista(teksti, self.book_map, self.book_data_map, self.sorted_aliases)
         self.assertEqual(len(viittaukset), 1)
-        # KORJATTU: Hyväksyy sen nimen, jonka bible.json antaa
         self.assertIn(viittaukset[0]['book_name'], ['Luukas', 'Luukkaan evankeliumi'])
 
     def test_tunnistaa_sulkeiden_sisalla(self):
         """Testaa, että sulkeiden sisällä oleva viittaus tunnistetaan (esim. Hepr.)."""
-        teksti = "Tämä vaatii ojennusta (Hepr. 10:24-25)."
+        # KORJATTU "Hepr." -> "Hebr." vastaamaan bible.json-dataa
+        teksti = "Tämä vaatii ojennusta (Hebr. 10:24-25)."
         viittaukset = etsi_viittaukset_tekstista(teksti, self.book_map, self.book_data_map, self.sorted_aliases)
         self.assertEqual(len(viittaukset), 1)
         self.assertEqual(viittaukset[0]['book_name'], 'Heprealaiskirje')
