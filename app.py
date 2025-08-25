@@ -146,7 +146,7 @@ def laske_kustannus_arvio(token_count, model_name):
     return f"~{total_cost_eur:.4f} €"
 
 # ==============================================================================
-# LOPULLINEN, VANKKA VIITTAUSTEN TUNNISTUS (v14.0-korjattu 3)
+# LOPULLINEN, VANKKA VIITTAUSTEN TUNNISTUS (v14.0.1-korjattu 3)
 # ==============================================================================
 def etsi_viittaukset_tekstista(text, book_map, book_data_map, sorted_aliases):
     # Luodaan pattern, joka sisältää nyt kaikki mahdolliset (pisteelliset ja pisteettömät) aliakset.
@@ -249,27 +249,28 @@ def etsi_ja_laajenna(
     except re.error:
         return []
 
-    key_to_find = None
-    # Etsitään kirjan avain ensisijaisesti täsmällisellä, virallisella nimellä
-    for k, v in book_name_map.items():
-        if v.lower() == kirja.lower():
-            # Etsi tämän book_id:n (k) vastaava avain book_mapista
-            for map_key, (map_id, _) in book_map.items():
-                if map_id == k:
-                    key_to_find = map_key
-                    break
+    # --- UUSI, YKSINKERTAISEMPI JA LUOTETTAVAMPI LOGIIKKA KIRJAN LÖYTÄMISEKSI ---
+    book_id_to_find = None
+    # Etsitään kirjan ID:tä kääntämällä book_name_map ympäri
+    for book_id, proper_name in book_name_map.items():
+        if proper_name.lower() == kirja.lower():
+            book_id_to_find = book_id
             break
+    
+    if not book_id_to_find:
+        return [] # Palautetaan tyhjä lista, jos kirjaa ei löydy
 
-    if not key_to_find:
+    try:
+        book_content = book_data_map[book_id_to_find]
+        oikea_nimi = book_name_map[book_id_to_find]
+    except KeyError:
         return []
-
-    book_id_str, book_content = book_map[key_to_find]
-    oikea_nimi = book_name_map.get(book_id_str, f"Kirja {book_id_str}")
+    # --- KORJAUKSEN LOPPU ---
 
     for luku_str, luku_data in book_content.get("chapter", {}).items():
         for jae_str, jae_data in luku_data.get("verse", {}).items():
             if pattern.search(jae_data.get("text", "").lower()):
-                siemen_jakeet.append((book_id_str, int(luku_str), int(jae_str)))
+                siemen_jakeet.append((book_id_to_find, int(luku_str), int(jae_str)))
 
     laajennetut_jakeet = set()
     for book_id, luku, jae_nro in siemen_jakeet:
@@ -441,7 +442,7 @@ st.set_page_config(page_title="Älykäs Raamattu-tutkija", layout="wide")
 if not st.session_state.password_correct:
     check_password()
 else:
-    st.title("📖 Älykäs Raamattu-tutkija v14.0")
+    st.title("📖 Älykäs Raamattu-tutkija v14.0.1")
     # Ladataan nyt myös kanoninen kirjalista
     # UUSI RIVI
     (
@@ -535,7 +536,7 @@ else:
                     lisamateriaalit
                 )
 
-                # --- LOPULLINEN KORJATTU LOGIIKKA (v14.0) ---
+                # --- LOPULLINEN KORJATTU LOGIIKKA (v14.0.1) ---
                 # 1. Yhdistä aihe ja lisämateriaalien sisältö yhdeksi isoksi tekstiksi
                 koko_syote_teksti = aihe + "\n" + st.session_state.aineisto["lisamateriaali"]
 
@@ -813,7 +814,7 @@ Keskity ehdottamaan laadukkaita rinnakkaispaikkoja ja aiheeseen liittyviä teemo
                     key="jakeet_naytto",
                 )
     # ==============================================================================
-    # VAIHE 4: LOPPUTULOS (PAREMPI VIRHEIDENKÄSITTELY) v14.0
+    # VAIHE 4: LOPPUTULOS (PAREMPI VIRHEIDENKÄSITTELY) v14.0.1
     # ==============================================================================
     elif st.session_state.step == "output":
         st.header("4. Valmis tuotos")
