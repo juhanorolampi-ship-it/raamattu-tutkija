@@ -332,7 +332,6 @@ Luo nyt yksityiskohtainen, numeroitu sisällysluettelo annettujen sääntöjen j
 """
     return tee_api_kutsu(prompt, malli, noudata_perusohjetta)
 
-
 def jarjestele_jakeet_osioihin(sisallysluettelo, jakeet, malli, noudata_perusohjetta):
     BATCH_SIZE = 30  # Käsitellään 30 jaetta kerrallaan
     final_jae_kartta = {}
@@ -344,12 +343,12 @@ def jarjestele_jakeet_osioihin(sisallysluettelo, jakeet, malli, noudata_perusohj
             if osion_numero.isdigit() and osion_numero not in final_jae_kartta:
                 final_jae_kartta[osion_numero] = []
 
-    # HUOM: Poistettu viittaus spinneriin tästä funktiosta
+    # HUOM: Viittaukset spinneriin on poistettu tästä funktiosta
     for i in range(0, len(jakeet), BATCH_SIZE):
         batch = jakeet[i:i + BATCH_SIZE]
         
         jae_teksti = "\n".join(batch)
-        prompt = f"""Tehtäväsi on järjestellä seuraavat Raamatun jakeet sisällysluettelon osioiden alle.
+        prompt = f"""Tehtäväsi on järjestellä seuraavat Raamatun jakeet sisallysluettelon osioiden alle.
 
 SISÄLLYSLUETTELO:
 {sisallysluettelo}
@@ -359,7 +358,7 @@ JÄRJESTELTÄVÄT JAKEET:
 
 OHJEET VASTAUSTA VARTEN:
 1.  Vastaa AINOASTAAN JSON-muodossa.
-2.  Käytä JSON-avaimina AINOASTAAN sisällysluettelon PÄÄNUMEROITA (esim. "1", "2", "3").
+2.  Käytä JSON-avaimina AINOASTAAN sisallysluettelon PÄÄNUMEROITA (esim. "1", "2", "3").
 3.  Jos sisällysluettelossa on alakohtia (esim. "1.1"), sijoita niihin kuuluvat jakeet niiden pääkohdan avaimen alle.
 4.  Jokainen jae tulee sijoittaa vähintään yhteen osioon. Jos jae ei tunnu sopivan mihinkään, älä sisällytä sitä vastaukseen.
 
