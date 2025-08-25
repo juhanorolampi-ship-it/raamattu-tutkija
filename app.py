@@ -149,7 +149,7 @@ def laske_kustannus_arvio(token_count, model_name):
 
 
 # ==============================================================================
-# LOPULLINEN, VANKKA VIITTAUSTEN TUNNISTUS (v13.4)
+# LOPULLINEN, VANKKA VIITTAUSTEN TUNNISTUS (v13.5)
 # ==============================================================================
 def etsi_viittaukset_tekstista(text, book_map, book_data_map, sorted_aliases):
     # Luodaan dynaaminen ja erittäin tarkka regex-pattern kaikista tunnetuista ALKUPERÄISISTÄ nimistä.
@@ -443,7 +443,7 @@ st.set_page_config(page_title="Älykäs Raamattu-tutkija", layout="wide")
 if not st.session_state.password_correct:
     check_password()
 else:
-    st.title("📖 Älykäs Raamattu-tutkija v13.4")
+    st.title("📖 Älykäs Raamattu-tutkija v13.5")
     # Ladataan nyt myös kanoninen kirjalista
     # UUSI RIVI
     (
