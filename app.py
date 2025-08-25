@@ -180,22 +180,26 @@ def etsi_viittaukset_tekstista(text, book_map, book_data_map, sorted_aliases):
             if verses_str:
                 verse_parts = verses_str.replace(' ', '').split(',')
                 for verse_part in verse_parts:
-                    if not verse_part: continue
+                    if not verse_part:
+                        continue
                     start_verse, end_verse = 0, 0
                     if '-' in verse_part:
                         try:
                             start_verse, end_verse = map(int, verse_part.split('-'))
-                        except ValueError: continue
+                        except ValueError:
+                            continue
                     else:
                         try:
                             start_verse = end_verse = int(verse_part)
-                        except ValueError: continue
+                        except ValueError:
+                            continue
                     all_references.append({"book_id": book_id, "book_name": book_proper_name, "chapter": int(chapter_str), "start_verse": start_verse, "end_verse": end_verse, "original_match": f"{book_proper_name} {chapter_str}:{start_verse}" + (f"-{end_verse}" if start_verse != end_verse else "")})
             else:
                 try:
                     last_verse_num = len(book_data_map[book_id]['chapter'][chapter_str]['verse'])
                     all_references.append({"book_id": book_id, "book_name": book_proper_name, "chapter": int(chapter_str), "start_verse": 1, "end_verse": last_verse_num, "original_match": f"{book_proper_name} {chapter_str}"})
-                except KeyError: continue
+                except KeyError:
+                    continue
     return all_references
 
 
@@ -860,7 +864,7 @@ Keskity ehdottamaan laadukkaita rinnakkaispaikkoja ja aiheeseen liittyviä teemo
                     help=f"Arvioidut kustannukset: {session_hinta_out}",
                 )
 
-                st.subheader(f"Päivän kulutus")
+                st.subheader("Päivän kulutus")
                 daily_hinta_out = laske_kustannus_arvio(
                     st.session_state.daily_token_count,
                     st.session_state.aineisto["malli"],
